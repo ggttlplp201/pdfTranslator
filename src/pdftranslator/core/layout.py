@@ -3,6 +3,10 @@ import fitz
 from .models import TextUnit
 
 
+# Module-level cache for fonts to avoid rebuilding on each call
+_FONT_CACHE = {}
+
+
 def extract_units(page) -> list[TextUnit]:
     units: list[TextUnit] = []
     data = page.get_text("dict")
@@ -22,6 +26,11 @@ def extract_units(page) -> list[TextUnit]:
     return units
 
 
+def _get_cached_font(fontname: str) -> fitz.Font:
+    """Get or create a font from the cache."""
+    return _FONT_CACHE.setdefault(fontname, fitz.Font(fontname))
+
+
 def redact_units(page, units: list[TextUnit]) -> None:
     for u in units:
         page.add_redact_annot(fitz.Rect(u.bbox))
@@ -30,12 +39,12 @@ def redact_units(page, units: list[TextUnit]) -> None:
 
 
 def _fit_fontsize(width: float, height: float, text: str, fontname: str, max_size: float) -> float:
-    font = fitz.Font(fontname)
+    font = _get_cached_font(fontname)
     size = max_size
     while size >= 4.0:
         text_width = font.text_length(text, fontsize=size)
-        # Check if text fits on a single line within the available width
-        if text_width <= width:
+        # Check if text fits within both width and height constraints
+        if text_width <= width and size <= height:
             return size
         size -= 0.5
     return 4.0
