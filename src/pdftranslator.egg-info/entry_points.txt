@@ -1,0 +1,2 @@
+[console_scripts]
+pdftranslate = pdftranslator.cli:main

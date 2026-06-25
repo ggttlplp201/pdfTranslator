@@ -1,0 +1,10 @@
+pyproject.toml
+src/pdftranslator/__init__.py
+src/pdftranslator.egg-info/PKG-INFO
+src/pdftranslator.egg-info/SOURCES.txt
+src/pdftranslator.egg-info/dependency_links.txt
+src/pdftranslator.egg-info/entry_points.txt
+src/pdftranslator.egg-info/requires.txt
+src/pdftranslator.egg-info/top_level.txt
+src/pdftranslator/core/__init__.py
+tests/test_smoke.py
