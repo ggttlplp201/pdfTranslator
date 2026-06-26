@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  ::selection { background: color-mix(in srgb, var(--accent, #1B66C9) 22%, transparent); }
+  @keyframes riseIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  .scrollpane::-webkit-scrollbar { width: 10px; }
+  .scrollpane::-webkit-scrollbar-thumb { background: #DADCE0; border-radius: 999px; border: 3px solid #fff; }
+  .scrollpane::-webkit-scrollbar-track { background: transparent; }
+  select.nq { appearance: none; -webkit-appearance: none; }
+  .swapbtn:hover { border-color: var(--accent, #1B66C9); color: var(--accent, #1B66C9); }
+  .swapbtn:hover svg { transform: rotate(180deg); }
+  .translate:hover { box-shadow: 0 1px 3px rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15); }
+  .ghost:hover { background: #F1F3F4; }
+  .drop:hover { border-color: var(--accent, #1B66C9); background: color-mix(in srgb, var(--accent,#1B66C9) 4%, #fff); }
+  .lnk:hover { text-decoration: none; }
+</style>
+</helmet>
+<div style="--accent: {{ accent }}; --paneDir: {{ paneDir }}; min-height: 100vh; background: #F8F9FA; color: #202124; font-family: 'Hanken Grotesk', system-ui, sans-serif; -webkit-font-smoothing: antialiased; padding: 0 0 64px;">
+
+  <main style="max-width: 1180px; margin: 0 auto; padding: 30px 40px 0;">
+
+    <!-- Heading + History -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; animation: riseIn .5s cubic-bezier(.2,.8,.2,1) both;">
+      <div style="display: flex; align-items: center; gap: 11px;">
+        <div style="width: 30px; height: 30px; background: var(--accent, #1B66C9); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 15px; font-weight: 700;">文</div>
+        <span style="font-size: 21px; font-weight: 700; letter-spacing: -0.015em; color: #202124;">PDF Translator</span>
+      </div>
+      <button class="ghost" style="display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 15px; border: 1px solid #DADCE0; background: #fff; font-family: inherit; font-size: 13.5px; font-weight: 500; color: #5F6368; cursor: pointer;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l3 2"/></svg>
+        History
+      </button>
+    </div>
+
+    <!-- Dropzone -->
+    <div class="drop" style="border: 2px dashed #C4C7CC; background: #fff; padding: 56px 32px; text-align: center; transition: border-color .2s, background .2s; animation: riseIn .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: .04s;">
+      <div style="display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; background: color-mix(in srgb, var(--accent,#1B66C9) 9%, #fff); margin-bottom: 18px; color: var(--accent, #1B66C9);">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>
+      </div>
+      <div style="font-size: 18px; color: #3C4043;">Drag &amp; drop a PDF here, or <span class="lnk" style="color: var(--accent, #1B66C9); font-weight: 600; text-decoration: underline; cursor: pointer;">browse</span></div>
+      <div style="display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13.5px; color: #5F6368;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        Global-Climate-Resilience-Report.pdf
+        <span style="color: #C4C7CC;">·</span><span>1.2 MB · 8 pages</span>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div style="display: flex; align-items: flex-end; gap: 14px; margin-top: 22px; flex-wrap: wrap; animation: riseIn .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: .1s;">
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <label style="font-size: 13px; font-weight: 500; color: #5F6368;">From</label>
+        <div style="position: relative;">
+          <select class="nq" style="height: 46px; min-width: 200px; padding: 0 40px 0 15px; border: 1px solid #DADCE0; background: #fff; font-family: inherit; font-size: 14.5px; font-weight: 500; color: #202124; cursor: pointer;">
+            <option>Auto-detect</option>
+            <option>English</option>
+            <option>Chinese (Simplified)</option>
+            <option>Portuguese</option>
+          </select>
+          <svg style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #5F6368;" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+      </div>
+
+      <button class="swapbtn" style="width: 46px; height: 46px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 1px solid #DADCE0; background: #fff; color: #5F6368; cursor: pointer; transition: border-color .2s, color .2s;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="transition: transform .45s cubic-bezier(.2,.8,.2,1);"><path d="m17 3 4 4-4 4"/><path d="M21 7H7"/><path d="m7 21-4-4 4-4"/><path d="M3 17h14"/></svg>
+      </button>
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <label style="font-size: 13px; font-weight: 500; color: #5F6368;">To</label>
+        <div style="position: relative;">
+          <select class="nq" style="height: 46px; min-width: 200px; padding: 0 40px 0 15px; border: 1px solid #DADCE0; background: #fff; font-family: inherit; font-size: 14.5px; font-weight: 500; color: #202124; cursor: pointer;">
+            <option>Chinese (Simplified)</option>
+            <option>English</option>
+            <option>Portuguese</option>
+          </select>
+          <svg style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #5F6368;" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+      </div>
+
+      <button class="translate" style="height: 46px; padding: 0 24px; display: flex; align-items: center; gap: 9px; border: none; background: var(--accent, #1B66C9); color: #fff; font-family: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; transition: box-shadow .2s; box-shadow: 0 1px 2px rgba(60,64,67,.18); margin-left: 4px;">
+        Translate
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </button>
+    </div>
+
+    <!-- Status -->
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 20px; padding: 13px 16px; background: color-mix(in srgb, #1E8E3E 7%, #fff); border: 1px solid color-mix(in srgb, #1E8E3E 26%, #DADCE0); flex-wrap: wrap; animation: riseIn .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: .16s;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="width: 22px; height: 22px; border-radius: 999px; background: #1E8E3E; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </span>
+        <span style="font-size: 14px; font-weight: 600; color: #1A7332;">Translation complete</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #5F7A66;">8 / 8 pages · 1.4s</span>
+      </div>
+      <button style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 15px; border: 1px solid color-mix(in srgb, var(--accent,#1B66C9) 30%, #DADCE0); background: #fff; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--accent, #1B66C9); cursor: pointer;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+        Download translated PDF
+      </button>
+    </div>
+
+    <!-- Panes -->
+    <div style="display: flex; flex-direction: var(--paneDir, row); gap: 22px; margin-top: 30px; animation: riseIn .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: .22s;">
+
+      <!-- Original -->
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; gap: 9px; margin-bottom: 11px;">
+          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #5F6368;">ORIGINAL</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 500; letter-spacing: 0.06em; padding: 2px 7px; background: #F1F3F4; color: #5F6368;">EN</span>
+        </div>
+        <div style="background: #fff; border: 1px solid #DADCE0; flex: 1;">
+          <div class="scrollpane" style="height: 540px; overflow-y: auto; padding: 26px 28px;">
+            <h2 style="margin: 0 0 18px; font-size: 22px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.25; color: #202124;">Global Climate Resilience Report</h2>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent, #1B66C9); font-weight: 500; margin: 0 0 10px;">Executive Summary</div>
+            <p style="margin: 0 0 15px; font-size: 14.5px; line-height: 1.78; color: #3C4043;">Over the past decade, coastal cities have faced unprecedented challenges from rising sea levels and intensifying storms. This report examines adaptation strategies across twelve metropolitan regions and evaluates their long-term effectiveness.</p>
+            <p style="margin: 0 0 15px; font-size: 14.5px; line-height: 1.78; color: #3C4043;">Investment in resilient infrastructure has grown by 43% since 2020, yet funding gaps remain significant in developing economies. Public–private partnerships have emerged as a critical mechanism for bridging these gaps and accelerating deployment.</p>
+            <sc-if value="{{ showPageMarkers }}" hint-placeholder-val="{{ true }}">
+              <div style="display: flex; align-items: center; gap: 12px; margin: 26px 0;"><span style="flex: 1; height: 1px; background: #E8EAED;"></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: #B0B3B8;">PAGE 2</span><span style="flex: 1; height: 1px; background: #E8EAED;"></span></div>
+            </sc-if>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent, #1B66C9); font-weight: 500; margin: 0 0 10px;">Key Findings</div>
+            <p style="margin: 0 0 15px; font-size: 14.5px; line-height: 1.78; color: #3C4043;">Early-warning systems reduced storm-related casualties by an estimated 60% in regions where they were deployed. Coordinated evacuation protocols proved decisive in the most densely populated districts.</p>
+            <p style="margin: 0 0 15px; font-size: 14.5px; line-height: 1.78; color: #3C4043;">Nature-based solutions, such as restored wetlands and mangrove buffers, proved both cost-effective and durable. These interventions delivered co-benefits for biodiversity, fisheries, and local livelihoods.</p>
+            <p style="margin: 0; font-size: 14.5px; line-height: 1.78; color: #3C4043;">The report concludes that resilience is most effective when embedded into routine urban planning rather than treated as an emergency response.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Translated -->
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; gap: 9px; margin-bottom: 11px;">
+          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: var(--accent, #1B66C9);">TRANSLATED</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 500; letter-spacing: 0.06em; padding: 2px 7px; background: color-mix(in srgb, var(--accent,#1B66C9) 12%, #fff); color: var(--accent, #1B66C9);">ZH</span>
+        </div>
+        <div style="background: #fff; border: 1px solid color-mix(in srgb, var(--accent,#1B66C9) 30%, #DADCE0); flex: 1; box-shadow: 0 1px 2px rgba(60,64,67,.08), 0 2px 8px 2px color-mix(in srgb, var(--accent,#1B66C9) 8%, transparent);">
+          <div class="scrollpane" style="height: 540px; overflow-y: auto; padding: 26px 28px; font-family: 'Noto Sans SC', 'Hanken Grotesk', sans-serif;">
+            <h2 style="margin: 0 0 18px; font-size: 23px; font-weight: 700; line-height: 1.35; color: #202124;">全球气候韧性报告</h2>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent, #1B66C9); font-weight: 500; margin: 0 0 10px;">执行摘要</div>
+            <p style="margin: 0 0 15px; font-size: 15px; line-height: 1.95; color: #34342F;">在过去十年中，沿海城市面临着海平面上升和风暴加剧带来的前所未有的挑战。本报告研究了十二个大都市区域的适应策略，并评估了它们的长期有效性。</p>
+            <p style="margin: 0 0 15px; font-size: 15px; line-height: 1.95; color: #34342F;">自 2020 年以来，对韧性基础设施的投资增长了 43%，但发展中经济体的资金缺口仍然巨大。公私合作已成为弥合这些缺口、加快项目落地的关键机制。</p>
+            <sc-if value="{{ showPageMarkers }}" hint-placeholder-val="{{ true }}">
+              <div style="display: flex; align-items: center; gap: 12px; margin: 26px 0;"><span style="flex: 1; height: 1px; background: #E8EAED;"></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: #B0B3B8;">第 2 页</span><span style="flex: 1; height: 1px; background: #E8EAED;"></span></div>
+            </sc-if>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent, #1B66C9); font-weight: 500; margin: 0 0 10px;">主要发现</div>
+            <p style="margin: 0 0 15px; font-size: 15px; line-height: 1.95; color: #34342F;">在部署了预警系统的地区，与风暴相关的伤亡人数估计减少了 60%。在人口最密集的城区，协调一致的疏散方案起到了决定性作用。</p>
+            <p style="margin: 0 0 15px; font-size: 15px; line-height: 1.95; color: #34342F;">基于自然的解决方案，例如恢复的湿地和红树林缓冲带，被证明既具成本效益又经久耐用。这些措施还为生物多样性、渔业和当地生计带来了协同效益。</p>
+            <p style="margin: 0; font-size: 15px; line-height: 1.95; color: #34342F;">报告的结论是：当韧性被纳入日常城市规划，而非仅作为应急响应时，其效果最为显著。</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;accent&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#1B66C9&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;options&quot;: [&quot;#1B66C9&quot;, &quot;#1E8E3E&quot;, &quot;#C2410C&quot;, &quot;#6D28D9&quot;] },
+  &quot;paneLayout&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;Side by side&quot;, &quot;options&quot;: [&quot;Side by side&quot;, &quot;Stacked&quot;], &quot;tsType&quot;: &quot;string&quot; },
+  &quot;showPageMarkers&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot; }
+}">
+class Component extends DCLogic {
+  renderVals() {
+    const accent = this.props.accent ?? '#1B66C9';
+    const layout = this.props.paneLayout ?? 'Side by side';
+    return {
+      accent,
+      paneDir: layout === 'Stacked' ? 'column' : 'row',
+      showPageMarkers: this.props.showPageMarkers ?? true,
+    };
+  }
+}
+</script>
+</body>
+</html>
