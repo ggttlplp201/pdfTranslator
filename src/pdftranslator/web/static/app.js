@@ -1,103 +1,213 @@
-const state = { file: null, jobId: null, poll: null };
 const $ = (id) => document.getElementById(id);
+const state = { file: null, jobId: null, poll: null, downloadUrl: null };
 
-function showError(msg) { const e = $("error"); e.textContent = msg; e.classList.remove("hidden"); }
-function clearError() { $("error").classList.add("hidden"); }
-function stopPoll() { if (state.poll) { clearInterval(state.poll); state.poll = null; } }
-function fail(msg) { stopPoll(); $("progressWrap").classList.add("hidden"); $("translateBtn").disabled = false; showError(msg); }
+const LANG_BADGE = { auto: "AUTO", en: "EN", pt: "PT", zh: "ZH" };
 
-function setProgress(page, count, text) {
-  $("progressWrap").classList.remove("hidden");
-  const pct = count > 0 ? Math.round((page / count) * 100) : 5;
-  $("progressBar").style.width = pct + "%";
-  $("progressText").textContent = text;
+function showStatus(which) {
+  for (const id of ["statusIdle", "statusProgress", "statusDone", "statusError"]) {
+    const el = $(id);
+    if (el) el.classList.toggle("hidden", id !== which);
+  }
+  // statusBar has no hidden class by default — always visible
+}
+
+function setBadges() {
+  $("origBadge").textContent = LANG_BADGE[$("from").value] || "AUTO";
+  $("transBadge").textContent = LANG_BADGE[$("to").value] || "ZH";
+}
+
+function humanSize(n) {
+  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+  if (n >= 1024) return (n / 1024).toFixed(0) + " KB";
+  return n + " B";
 }
 
 function setFile(f) {
   if (!f) return;
   const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
   if (!isPdf) { showError("Please choose a PDF file."); return; }
-  clearError();
   state.file = f;
-  $("filename").textContent = f.name;
+  // #fileMeta contains an icon SVG + child spans; set spans individually, never
+  // overwrite textContent on the parent (that destroys the icon and the spans).
+  $("fileMetaName").textContent = f.name;
+  $("fileMetaInfo").textContent = humanSize(f.size);
+  $("fileMeta").classList.remove("hidden");
   $("translateBtn").disabled = false;
 }
 
+function showError(msg) {
+  $("errorText").textContent = msg;
+  showStatus("statusError");
+}
+
 async function safeDetail(res) {
-  try { const j = await res.json(); return j.detail; } catch { return null; }
+  try { return (await res.json()).detail; } catch { return null; }
 }
 
-// Render a document's pages as <img> tags (server renders each page to PNG).
-// This avoids the browser downloading PDFs instead of displaying them in-frame.
-async function loadPages(which, containerId) {
-  const container = $(containerId);
-  container.innerHTML = "";
-  let res;
-  try { res = await fetch(`/api/jobs/${state.jobId}/pages?which=${which}`); }
-  catch { container.textContent = "Preview unavailable (network error)."; return; }
-  if (!res.ok) {
-    container.textContent =
-      "Preview unavailable — restart the server so it picks up the latest version.";
-    return;
-  }
-  const { pages } = await res.json();
-  if (!pages) { container.textContent = "No pages to preview."; return; }
-  for (let i = 0; i < pages; i++) {
-    const img = document.createElement("img");
-    img.className = "pdfpage";
-    img.loading = "lazy";
-    img.alt = `${which} page ${i + 1}`;
-    img.src = `/api/jobs/${state.jobId}/page/${which}/${i}`;
-    container.appendChild(img);
+// ---- engine menu + key ----
+async function refreshEngineUi() {
+  const engine = $("engine").value;
+  const needsKey = engine === "claude" || engine === "openai";
+  $("apiKeyWrap").classList.toggle("hidden", !needsKey);
+  if (needsKey) {
+    try {
+      const s = await (await fetch("/api/settings")).json();
+      $("apiKey").placeholder = s[engine] ? "Key saved — enter a new one to replace" : "Paste your API key";
+    } catch {}
   }
 }
 
+async function saveKey() {
+  const engine = $("engine").value;
+  const key = $("apiKey").value.trim();
+  if (!key) return;
+  const fd = new FormData();
+  fd.append("engine", engine);
+  fd.append("api_key", key);
+  const res = await fetch("/api/settings", { method: "POST", body: fd });
+  if (res.ok) { $("apiKey").value = ""; refreshEngineUi(); }
+  else showError((await safeDetail(res)) || "Could not save key.");
+}
+
+// ---- translate ----
 async function startTranslate() {
   if (!state.file) return;
-  clearError();
-  $("download").classList.add("hidden");
-  $("transView").innerHTML = "";
   $("origView").innerHTML = "";
+  $("transView").innerHTML = "";
   $("translateBtn").disabled = true;
-  setProgress(0, 0, "Uploading…");
+  showStatus("statusProgress");
+  setProgress(0, 0);
 
   const fd = new FormData();
   fd.append("file", state.file);
   fd.append("source", $("from").value);
   fd.append("target", $("to").value);
+  fd.append("engine", $("engine").value);
 
   let res;
   try { res = await fetch("/api/translate", { method: "POST", body: fd }); }
   catch { return fail("Network error during upload."); }
-  if (!res.ok) { return fail((await safeDetail(res)) || "Upload failed."); }
+  if (!res.ok) return fail((await safeDetail(res)) || "Upload failed.");
 
-  const { job_id } = await res.json();
-  state.jobId = job_id;
-  loadPages("original", "origView");
+  const data = await res.json();
+  state.jobId = data.job_id;
+  loadText("original", "origView");
   pollStatus();
 }
 
+function setProgress(page, count) {
+  // #progressBar is the TRACK <div>; the FILL is its child .progress-bar-fill.
+  // Setting style.width on #progressBar itself does nothing visible.
+  const fill = document.querySelector("#progressBar .progress-bar-fill");
+  const pct = count > 0 ? Math.round((page / count) * 100) : 6;
+  if (fill) fill.style.width = pct + "%";
+  $("progressText").textContent = count ? `Translating page ${page} of ${count}…` : "Starting…";
+}
+
+function fail(msg) {
+  if (state.poll) { clearInterval(state.poll); state.poll = null; }
+  $("translateBtn").disabled = false;
+  showError(msg);
+}
+
 function pollStatus() {
-  stopPoll();
+  if (state.poll) clearInterval(state.poll);
   state.poll = setInterval(async () => {
     let res;
     try { res = await fetch(`/api/jobs/${state.jobId}`); } catch { return; }
     if (!res.ok) return;
     const s = await res.json();
     if (s.status === "running") {
-      setProgress(s.page, s.page_count, s.page_count ? `Translating page ${s.page} / ${s.page_count}…` : "Starting…");
+      setProgress(s.page, s.page_count);
+      // Enrich file meta with page count as soon as it's known
+      if (s.page_count) {
+        const pages = s.page_count;
+        $("fileMetaInfo").textContent =
+          humanSize(state.file.size) + ` · ${pages} page${pages !== 1 ? "s" : ""}`;
+      }
     } else if (s.status === "done") {
-      stopPoll();
-      setProgress(1, 1, "Done");
-      loadPages("result", "transView");
-      const dl = $("download");
-      dl.href = `/api/jobs/${state.jobId}/result`;
-      dl.classList.remove("hidden");
+      clearInterval(state.poll); state.poll = null;
+      // Enrich page count on done too (in case it resolved before first running poll)
+      if (s.page_count) {
+        const pages = s.page_count;
+        $("fileMetaInfo").textContent =
+          humanSize(state.file.size) + ` · ${pages} page${pages !== 1 ? "s" : ""}`;
+      }
+      await loadText("result", "transView");
+      // #downloadBtn is a <button>, not <a> — store URL and trigger via click handler
+      state.downloadUrl = `/api/jobs/${state.jobId}/result`;
+      showStatus("statusDone");
       $("translateBtn").disabled = false;
+      refreshHistory();
     } else if (s.status === "error") {
       fail(s.error || "Translation failed.");
     }
   }, 1000);
+}
+
+// ---- text-reader panes ----
+async function loadText(which, viewId) {
+  const view = $(viewId);
+  view.innerHTML = "";
+  let res;
+  try { res = await fetch(`/api/jobs/${state.jobId}/text?which=${which}`); }
+  catch { view.textContent = "Preview unavailable."; return; }
+  if (!res.ok) { view.textContent = "Preview unavailable."; return; }
+  const { pages } = await res.json();
+  pages.forEach((text, i) => {
+    if (i > 0) {
+      const marker = document.createElement("div");
+      marker.className = "pagemarker";
+      marker.textContent = which === "result" ? `第 ${i + 1} 页` : `PAGE ${i + 1}`;
+      view.appendChild(marker);
+    }
+    const p = document.createElement("div");
+    p.className = "pagetext";
+    p.textContent = text;
+    view.appendChild(p);
+  });
+}
+
+// ---- history (session-only) ----
+async function refreshHistory() {
+  let res;
+  try { res = await fetch("/api/jobs"); } catch { return; }
+  if (!res.ok) return;
+  const jobs = await res.json();
+  const list = $("historyList");
+  list.innerHTML = "";
+  // #historyList is a <ul>; wrap each entry in <li>
+  jobs.forEach((j) => {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.className = "historyitem";
+    btn.textContent = `${j.filename} · ${(j.source || "auto").toUpperCase()}→${(j.target || "").toUpperCase()} · ${j.status}`;
+    btn.addEventListener("click", () => openHistory(j.id));
+    li.appendChild(btn);
+    list.appendChild(li);
+  });
+}
+
+async function openHistory(jobId) {
+  state.jobId = jobId;
+  $("historyPanel").classList.add("hidden");
+  await loadText("original", "origView");
+  const s = await (await fetch(`/api/jobs/${jobId}`)).json();
+  if (s.status === "done") {
+    await loadText("result", "transView");
+    state.downloadUrl = `/api/jobs/${jobId}/result`;
+    showStatus("statusDone");
+  }
+}
+
+function swapLangs() {
+  const from = $("from"), to = $("to");
+  // 'auto' has no slot in To; fall back to 'en' when swapping an auto source
+  const newTo = from.value === "auto" ? "en" : from.value;
+  const newFrom = to.value;
+  from.value = newFrom;
+  to.value = newTo;
+  setBadges();
 }
 
 function wireUp() {
@@ -109,7 +219,28 @@ function wireUp() {
   ["dragleave", "drop"].forEach((ev) =>
     drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
   drop.addEventListener("drop", (e) => setFile(e.dataTransfer.files[0]));
+
+  $("from").addEventListener("change", setBadges);
+  $("to").addEventListener("change", setBadges);
+  $("swapBtn").addEventListener("click", swapLangs);
+  $("engine").addEventListener("change", refreshEngineUi);
+  $("saveKeyBtn").addEventListener("click", saveKey);
   $("translateBtn").addEventListener("click", startTranslate);
+  if ($("retryBtn")) $("retryBtn").addEventListener("click", startTranslate);
+  // #downloadBtn is a <button>; navigate to the stored download URL on click
+  if ($("downloadBtn")) {
+    $("downloadBtn").addEventListener("click", () => {
+      if (state.downloadUrl) window.location.href = state.downloadUrl;
+    });
+  }
+  $("historyBtn").addEventListener("click", () => {
+    $("historyPanel").classList.toggle("hidden");
+    refreshHistory();
+  });
+
+  setBadges();
+  refreshEngineUi();
+  showStatus("statusIdle");
 }
 
 document.addEventListener("DOMContentLoaded", wireUp);

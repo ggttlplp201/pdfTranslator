@@ -347,6 +347,15 @@ def test_translate_defaults_to_google(fake_google):
     assert client.get(f"/api/jobs/{job_id}").json()["engine"] == "google"
 
 
+def test_app_js_calls_text_and_settings_endpoints():
+    client = TestClient(create_app())
+    js = client.get("/static/app.js").text
+    assert "/api/translate" in js
+    assert "/api/jobs/" in js and "/text?which=" in js
+    assert "/api/settings" in js
+    assert "engine" in js  # sends the engine field
+
+
 def test_redesign_structure_present():
     client = TestClient(create_app())
     html = client.get("/").text
