@@ -27,11 +27,32 @@ async function safeDetail(res) {
   try { const j = await res.json(); return j.detail; } catch { return null; }
 }
 
+// Render a document's pages as <img> tags (server renders each page to PNG).
+// This avoids the browser downloading PDFs instead of displaying them in-frame.
+async function loadPages(which, containerId) {
+  const container = $(containerId);
+  container.innerHTML = "";
+  let res;
+  try { res = await fetch(`/api/jobs/${state.jobId}/pages?which=${which}`); }
+  catch { return; }
+  if (!res.ok) return;
+  const { pages } = await res.json();
+  for (let i = 0; i < pages; i++) {
+    const img = document.createElement("img");
+    img.className = "pdfpage";
+    img.loading = "lazy";
+    img.alt = `${which} page ${i + 1}`;
+    img.src = `/api/jobs/${state.jobId}/page/${which}/${i}`;
+    container.appendChild(img);
+  }
+}
+
 async function startTranslate() {
   if (!state.file) return;
   clearError();
   $("download").classList.add("hidden");
-  $("transFrame").removeAttribute("src");
+  $("transView").innerHTML = "";
+  $("origView").innerHTML = "";
   $("translateBtn").disabled = true;
   setProgress(0, 0, "Uploading…");
 
@@ -47,7 +68,7 @@ async function startTranslate() {
 
   const { job_id } = await res.json();
   state.jobId = job_id;
-  $("origFrame").src = `/api/jobs/${job_id}/original`;
+  loadPages("original", "origView");
   pollStatus();
 }
 
@@ -63,10 +84,9 @@ function pollStatus() {
     } else if (s.status === "done") {
       stopPoll();
       setProgress(1, 1, "Done");
-      const url = `/api/jobs/${state.jobId}/result`;
-      $("transFrame").src = url;
+      loadPages("result", "transView");
       const dl = $("download");
-      dl.href = url;
+      dl.href = `/api/jobs/${state.jobId}/result`;
       dl.classList.remove("hidden");
       $("translateBtn").disabled = false;
     } else if (s.status === "error") {

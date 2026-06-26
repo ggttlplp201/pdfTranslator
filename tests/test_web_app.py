@@ -183,8 +183,8 @@ def test_index_has_ui_elements():
     html = client.get("/").text
     assert 'id="dropzone"' in html
     assert 'id="translateBtn"' in html
-    assert 'id="origFrame"' in html
-    assert 'id="transFrame"' in html
+    assert 'id="origView"' in html
+    assert 'id="transView"' in html
     assert "/static/app.js" in html
 
 
@@ -210,3 +210,62 @@ def test_previews_served_inline_not_attachment(fake_google):
         disposition = resp.headers.get("content-disposition", "")
         assert disposition.startswith("inline"), (path, disposition)
         assert "attachment" not in disposition
+
+
+def test_pages_and_page_render_as_png(fake_google):
+    client = TestClient(create_app())
+    job_id = client.post(
+        "/api/translate",
+        files={"file": ("in.pdf", _pdf_bytes("hello"), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    _wait(client, job_id)
+
+    for which in ("original", "result"):
+        pages = client.get(f"/api/jobs/{job_id}/pages?which={which}")
+        assert pages.status_code == 200
+        assert pages.json()["pages"] == 1
+
+        img = client.get(f"/api/jobs/{job_id}/page/{which}/0")
+        assert img.status_code == 200
+        assert img.headers["content-type"] == "image/png"
+        assert img.content[:8] == b"\x89PNG\r\n\x1a\n"  # PNG signature
+
+    # out-of-range page → 404
+    assert client.get(f"/api/jobs/{job_id}/page/result/9").status_code == 404
+
+
+def test_pages_invalid_which_is_400(fake_google):
+    client = TestClient(create_app())
+    job_id = client.post(
+        "/api/translate",
+        files={"file": ("in.pdf", _pdf_bytes("hello"), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    _wait(client, job_id)
+    assert client.get(f"/api/jobs/{job_id}/pages?which=bogus").status_code == 400
+
+
+def test_result_pages_404_while_running(monkeypatch):
+    import threading
+    gate = threading.Event()
+
+    class Blocking:
+        def translate(self, texts, source, target):
+            gate.wait(timeout=5)
+            return [t.upper() for t in texts]
+
+    monkeypatch.setattr(providers, "build_provider", lambda name: Blocking())
+    client = TestClient(create_app())
+    try:
+        job_id = client.post(
+            "/api/translate",
+            files={"file": ("in.pdf", _pdf_bytes("hello"), "application/pdf")},
+            data={"source": "auto", "target": "en"},
+        ).json()["job_id"]
+        # result not ready yet → pages 404
+        assert client.get(f"/api/jobs/{job_id}/pages?which=result").status_code == 404
+        # original is available immediately
+        assert client.get(f"/api/jobs/{job_id}/pages?which=original").json()["pages"] == 1
+    finally:
+        gate.set()

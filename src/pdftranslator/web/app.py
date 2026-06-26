@@ -1,13 +1,15 @@
 from pathlib import Path
 
+import fitz
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from ..core import lang
 from .jobs import JobStore
 
 STATIC_DIR = Path(__file__).parent / "static"
+PREVIEW_DPI = 110
 
 
 def create_app(store: JobStore | None = None) -> FastAPI:
@@ -75,6 +77,44 @@ def create_app(store: JobStore | None = None) -> FastAPI:
             job.output_path, media_type="application/pdf",
             filename="translated.pdf", content_disposition_type="inline",
         )
+
+    def _pdf_path(job, which: str) -> Path:
+        # Resolve which document to preview. Rendering to images (below) avoids
+        # the browser's PDF-in-iframe download behavior entirely.
+        if which == "original":
+            return job.input_path
+        if which == "result":
+            if job.status != "done":
+                raise HTTPException(status_code=404, detail="result not ready")
+            return job.output_path
+        raise HTTPException(status_code=400, detail="invalid document")
+
+    @app.get("/api/jobs/{job_id}/pages")
+    def job_pages(job_id: str, which: str = "result") -> dict:
+        job = app.state.store.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="unknown job")
+        path = _pdf_path(job, which)
+        doc = fitz.open(path)
+        try:
+            return {"pages": doc.page_count}
+        finally:
+            doc.close()
+
+    @app.get("/api/jobs/{job_id}/page/{which}/{n}")
+    def job_page(job_id: str, which: str, n: int):
+        job = app.state.store.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="unknown job")
+        path = _pdf_path(job, which)
+        doc = fitz.open(path)
+        try:
+            if n < 0 or n >= doc.page_count:
+                raise HTTPException(status_code=404, detail="no such page")
+            png = doc[n].get_pixmap(dpi=PREVIEW_DPI).tobytes("png")
+        finally:
+            doc.close()
+        return Response(content=png, media_type="image/png")
 
     return app
 
