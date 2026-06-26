@@ -96,3 +96,66 @@ def test_google_raises_after_persistent_5xx():
     with pytest.raises(r.RequestException):
         provider.translate(["Hi"], source="en", target="pt")
     assert len(session.calls) == 3
+
+
+class FakeAnthropicMessage:
+    def __init__(self, text):
+        self.content = [type("B", (), {"type": "text", "text": text})()]
+
+
+class FakeAnthropicClient:
+    def __init__(self, texts):
+        self._texts = list(texts)
+        self.calls = []
+
+        class _Messages:
+            def __init__(self, outer):
+                self._outer = outer
+
+            def create(self, model, max_tokens, system, messages):
+                self._outer.calls.append(messages[0]["content"])
+                idx = min(len(self._outer.calls) - 1, len(self._outer._texts) - 1)
+                return FakeAnthropicMessage(self._outer._texts[idx])
+
+        self.messages = _Messages(self)
+
+
+def test_anthropic_batch_returns_translations():
+    client = FakeAnthropicClient(['["你好", "世界"]'])
+    provider = providers.AnthropicProvider(api_key="x", client=client)
+    assert provider.translate(["Hello", "World"], "en", "zh") == ["你好", "世界"]
+    assert len(client.calls) == 1  # one batched call
+
+
+def test_anthropic_falls_back_per_line_on_count_mismatch():
+    # First (batch) call returns the wrong count; then one call per line.
+    client = FakeAnthropicClient(['["only-one"]', '["A"]', '["B"]'])
+    provider = providers.AnthropicProvider(api_key="x", client=client)
+    out = provider.translate(["Hello", "World"], "en", "zh")
+    assert out == ["A", "B"]
+    assert len(client.calls) == 3  # 1 failed batch + 2 per-line
+
+
+def test_anthropic_strips_code_fences():
+    client = FakeAnthropicClient(['```json\n["你好"]\n```'])
+    provider = providers.AnthropicProvider(api_key="x", client=client)
+    assert provider.translate(["Hello"], "en", "zh") == ["你好"]
+
+
+def test_build_provider_routes_engines():
+    assert isinstance(providers.build_provider("google"), providers.GoogleProvider)
+    assert isinstance(
+        providers.build_provider("claude", api_key="k"), providers.AnthropicProvider
+    )
+    assert isinstance(
+        providers.build_provider("openai", api_key="k"), providers.OpenAIProvider
+    )
+
+
+def test_build_provider_requires_llm_key():
+    with pytest.raises(ValueError):
+        providers.build_provider("claude")
+    with pytest.raises(ValueError):
+        providers.build_provider("openai", api_key="")
+    with pytest.raises(ValueError):
+        providers.build_provider("bogus")
