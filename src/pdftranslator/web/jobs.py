@@ -58,8 +58,16 @@ class JobStore:
 
     def _evict_locked(self) -> None:
         while len(self._order) > self._max_jobs:
-            old_id = self._order.pop(0)
-            old = self._jobs.pop(old_id, None)
+            victim_id = None
+            for jid in self._order:
+                j = self._jobs.get(jid)
+                if j is None or j.status != "running":
+                    victim_id = jid
+                    break
+            if victim_id is None:
+                break  # all over-cap jobs still running; keep them
+            self._order.remove(victim_id)
+            old = self._jobs.pop(victim_id, None)
             if old is not None:
                 shutil.rmtree(old.tmpdir, ignore_errors=True)
 

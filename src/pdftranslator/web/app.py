@@ -33,7 +33,8 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         data = await file.read()
         if not data:
             raise HTTPException(status_code=400, detail="empty file")
-        if not data[:5].startswith(b"%PDF"):
+        # Magic-byte sniff (not full validation — just rejects obvious non-PDFs)
+        if not data.startswith(b"%PDF"):
             raise HTTPException(status_code=400, detail="not a PDF file")
         job = app.state.store.create(data, source, target)
         return {"job_id": job.id}

@@ -1,3 +1,4 @@
+import threading
 import time
 
 import fitz
@@ -87,6 +88,57 @@ def test_result_404_before_done(fake_google):
     # unknown job id → 404
     assert client.get("/api/jobs/nope/result").status_code == 404
     assert client.get("/api/jobs/nope").status_code == 404
+
+
+def test_result_404_while_running(monkeypatch):
+    """GET /result returns 404 while the job is still running, then 200 once done."""
+    gate = threading.Event()
+
+    class BlockingFake:
+        def translate(self, texts, source, target):
+            gate.wait()
+            return [t.upper() for t in texts]
+
+    monkeypatch.setattr(providers, "build_provider", lambda name: BlockingFake())
+
+    client = TestClient(create_app())
+    try:
+        resp = client.post(
+            "/api/translate",
+            files={"file": ("in.pdf", _pdf_bytes("hello"), "application/pdf")},
+            data={"source": "auto", "target": "en"},
+        )
+        assert resp.status_code == 200
+        job_id = resp.json()["job_id"]
+
+        # While translation is blocked the result must be 404
+        assert client.get(f"/api/jobs/{job_id}/result").status_code == 404
+    finally:
+        gate.set()  # unblock the worker
+
+    status = _wait(client, job_id)
+    assert status["status"] == "done"
+    assert client.get(f"/api/jobs/{job_id}/result").status_code == 200
+
+
+def test_bad_source_is_400(fake_google):
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/translate",
+        files={"file": ("in.pdf", _pdf_bytes(), "application/pdf")},
+        data={"source": "fr", "target": "en"},
+    )
+    assert resp.status_code == 400
+
+
+def test_empty_file_is_400(fake_google):
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/translate",
+        files={"file": ("in.pdf", b"", "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    )
+    assert resp.status_code == 400
 
 
 def test_bad_target_is_400(fake_google):
