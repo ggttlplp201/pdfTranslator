@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from typing import Protocol
 
@@ -84,16 +85,22 @@ class _LLMProvider:
     # lines so the count drifted, which forced a slow one-call-per-line fallback
     # (~40 calls per page). Index keys keep one call per batch and let us re-ask
     # only for any indices that came back missing.
+    # Use a line-marker protocol, NOT JSON: translated text frequently contains
+    # quotes/colons/commas (e.g. 帕西尼小体："弥散振动"), which break JSON values and
+    # made whole pages fail to parse and fall back to the source language. The
+    # <<<n>>> marker only needs to survive at line start, so content can be anything.
     SYSTEM = (
-        "You are a professional translator. You receive a JSON object whose keys are "
-        "line numbers and whose values are CONSECUTIVE lines of a single document in "
-        "{source} — a sentence is often split across several lines. Read all the lines "
-        "together for context, then translate the document into {target}. Return ONLY a "
-        "JSON object with the EXACT same keys; each value is the translation of that "
-        "line, divided so it still reads naturally line by line. Translate EVERY line — "
-        "including headings, table cells and fragments — and never leave the original "
-        "{source} text except for numbers, symbols, or code. No commentary, no code fences."
+        "You are a professional translator. The text below is a single document in "
+        "{source}, given as numbered lines; each line begins with a marker like <<<5>>>. "
+        "Consecutive lines often form one sentence split across lines — read them "
+        "together for context. Translate the document into {target}. Output EVERY line on "
+        "its own line, each beginning with the SAME <<<n>>> marker, then a space, then the "
+        "translation of that line. Output only these marked lines, in order — no JSON, no "
+        "commentary, no code fences. Translate every line (including headings, table cells "
+        "and fragments); never leave the original {source} text except for numbers, "
+        "symbols, or code."
     )
+    _MARK = re.compile(r"\s*<<<(\d+)>>>[ \t]?(.*)")
 
     def __init__(self, batch_size: int = 100):
         self._batch_size = batch_size
@@ -143,12 +150,14 @@ class _LLMProvider:
 
     def _translate_map(self, mapping: dict, source: str, target: str):
         system = self.SYSTEM.format(source=_lang_name(source), target=_lang_name(target))
-        raw = self._complete(system, json.dumps(mapping, ensure_ascii=False))
-        try:
-            data = json.loads(_strip_fences(raw))
-        except (ValueError, TypeError):
-            return None
-        return data if isinstance(data, dict) else None
+        user = "\n".join(f"<<<{k}>>> {v}" for k, v in mapping.items())
+        raw = self._complete(system, user)
+        out = {}
+        for line in raw.splitlines():
+            m = self._MARK.match(line)
+            if m:
+                out[m.group(1)] = m.group(2)
+        return out or None
 
     def _complete(self, system: str, user: str) -> str:
         raise NotImplementedError

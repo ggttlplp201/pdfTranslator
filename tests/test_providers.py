@@ -121,8 +121,8 @@ class FakeAnthropicClient:
 
 
 def test_anthropic_batch_returns_translations():
-    # Index-keyed JSON object: keys are line numbers, values the translations.
-    client = FakeAnthropicClient(['{"0": "你好", "1": "世界"}'])
+    # Line-marker protocol: each output line is "<<<n>>> translation".
+    client = FakeAnthropicClient(["<<<0>>> 你好\n<<<1>>> 世界"])
     provider = providers.AnthropicProvider(api_key="x", client=client)
     assert provider.translate(["Hello", "World"], "en", "zh") == ["你好", "世界"]
     assert len(client.calls) == 1  # one batched call, no per-line fan-out
@@ -131,7 +131,7 @@ def test_anthropic_batch_returns_translations():
 def test_anthropic_retries_only_missing_indices():
     # First call drops index 1; the retry supplies just the missing one — never
     # one call per line.
-    client = FakeAnthropicClient(['{"0": "A"}', '{"1": "B"}'])
+    client = FakeAnthropicClient(["<<<0>>> A", "<<<1>>> B"])
     provider = providers.AnthropicProvider(api_key="x", client=client)
     out = provider.translate(["Hello", "World"], "en", "zh")
     assert out == ["A", "B"]
@@ -140,15 +140,24 @@ def test_anthropic_retries_only_missing_indices():
 
 def test_anthropic_falls_back_to_original_when_unresolved():
     # Model returns nothing usable on both attempts → keep originals, no loop.
-    client = FakeAnthropicClient(['{}'])
+    client = FakeAnthropicClient([""])
     provider = providers.AnthropicProvider(api_key="x", client=client)
     out = provider.translate(["Hello", "World"], "en", "zh")
     assert out == ["Hello", "World"]
     assert len(client.calls) == 2  # bounded: initial + one retry
 
 
-def test_anthropic_strips_code_fences():
-    client = FakeAnthropicClient(['```json\n{"0": "你好"}\n```'])
+def test_anthropic_handles_quotes_in_translation():
+    # Quotes/colons in the content must NOT break parsing (the JSON format did).
+    client = FakeAnthropicClient(['<<<0>>> 帕西尼小体："弥散振动"。'])
+    provider = providers.AnthropicProvider(api_key="x", client=client)
+    assert provider.translate(['Pacinian corpuscle: "A diffuse vibration".'], "en", "zh") == [
+        '帕西尼小体："弥散振动"。'
+    ]
+
+
+def test_anthropic_tolerates_code_fences():
+    client = FakeAnthropicClient(["```\n<<<0>>> 你好\n```"])
     provider = providers.AnthropicProvider(api_key="x", client=client)
     assert provider.translate(["Hello"], "en", "zh") == ["你好"]
 
