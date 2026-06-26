@@ -386,7 +386,9 @@ function wireUp() {
   // #downloadBtn is a <button>; navigate to the stored download URL on click
   if ($("downloadBtn")) {
     $("downloadBtn").addEventListener("click", () => {
-      if (state.downloadUrl) window.location.href = state.downloadUrl;
+      // ?download=1 makes the server send it as an attachment (save dialog)
+      // rather than navigating the page to an inline PDF.
+      if (state.downloadUrl) window.location.href = state.downloadUrl + "?download=1";
     });
   }
   $("historyBtn").addEventListener("click", () => {

@@ -462,8 +462,12 @@ def test_translate_warns_without_file():
     assert "Please choose a PDF first" in js
 
 
-def test_history_is_private_per_user(fake_google):
-    """Two browsers on the same server must not see each other's jobs."""
+def test_history_list_is_private_per_user(fake_google):
+    """The history *list* must not reveal another user's jobs (no enumeration).
+
+    Direct access by the unguessable job id is intentionally allowed (capability
+    model) so downloads work without depending on the session cookie.
+    """
     app = create_app()
     a = TestClient(app)   # user A (own cookie jar / session)
     b = TestClient(app)   # user B (different session)
@@ -475,17 +479,30 @@ def test_history_is_private_per_user(fake_google):
     ).json()["job_id"]
     _wait(a, job_id)
 
-    # A sees and can open its own job
+    # A sees its own job in history; B's history is empty (cannot enumerate A's).
     assert any(j["id"] == job_id for j in a.get("/api/jobs").json())
-    assert a.get(f"/api/jobs/{job_id}").status_code == 200
-
-    # B sees an empty history and cannot reach A's job by any route
     assert b.get("/api/jobs").json() == []
-    assert b.get(f"/api/jobs/{job_id}").status_code == 404
-    assert b.get(f"/api/jobs/{job_id}/result").status_code == 404
-    assert b.get(f"/api/jobs/{job_id}/original").status_code == 404
-    assert b.get(f"/api/jobs/{job_id}/page/result/0").status_code == 404
-    assert b.get(f"/api/jobs/{job_id}/text").status_code == 404
+
+
+def test_download_works_without_session_cookie(fake_google):
+    """A download must succeed even if the request carries no session cookie
+    (regression: the per-user owner check returned 'unknown job' on download)."""
+    app = create_app()
+    a = TestClient(app)
+    job_id = a.post(
+        "/api/translate",
+        files={"file": ("a.pdf", _pdf_bytes("hi"), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    _wait(a, job_id)
+
+    # A cookieless client (fresh jar) can still fetch and download by id.
+    nocookie = TestClient(app)
+    nocookie.cookies.clear()
+    r = nocookie.get(f"/api/jobs/{job_id}/result?download=1")
+    assert r.status_code == 200
+    assert r.content[:5].startswith(b"%PDF")
+    assert "attachment" in r.headers.get("content-disposition", "")
 
 
 def test_session_cookie_issued():

@@ -70,11 +70,14 @@ def create_app(store: JobStore | None = None) -> FastAPI:
     app.state.store = store or JobStore()
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-    def _get_owned(job_id: str, owner: str):
-        """Fetch a job only if it belongs to this user; otherwise 404 (we never
-        reveal that another user's job exists)."""
+    def _get_job(job_id: str):
+        """Fetch a job by its unguessable id. The id (128-bit random) is itself the
+        capability: only its owner ever receives it, so direct access by id needs
+        no cookie — which is what keeps downloads working reliably. Enumeration is
+        still blocked: the history *list* is filtered to the requester (see
+        jobs_list), so other users can neither see nor guess your jobs."""
         job = app.state.store.get(job_id)
-        if job is None or job.owner != owner:
+        if job is None:
             raise HTTPException(status_code=404, detail="unknown job")
         return job
 
@@ -134,8 +137,8 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         return {"job_id": job.id}
 
     @app.get("/api/jobs/{job_id}")
-    def job_status(job_id: str, owner: str = Depends(_client_id)) -> dict:
-        job = _get_owned(job_id, owner)
+    def job_status(job_id: str) -> dict:
+        job = _get_job(job_id)
         return {
             "status": job.status,
             "page": job.page,
@@ -149,8 +152,8 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         }
 
     @app.get("/api/jobs/{job_id}/original")
-    def job_original(job_id: str, owner: str = Depends(_client_id)):
-        job = _get_owned(job_id, owner)
+    def job_original(job_id: str):
+        job = _get_job(job_id)
         # Inline so the browser renders it in the preview iframe (not download).
         return FileResponse(
             job.input_path, media_type="application/pdf",
@@ -158,15 +161,17 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         )
 
     @app.get("/api/jobs/{job_id}/result")
-    def job_result(job_id: str, owner: str = Depends(_client_id)):
-        job = _get_owned(job_id, owner)
+    def job_result(job_id: str, download: bool = False):
+        job = _get_job(job_id)
         if job.status != "done":
             raise HTTPException(status_code=404, detail="result not ready")
-        # Inline so it renders in the preview iframe; the Download button's
-        # anchor carries `download`, which forces a save when clicked.
+        # download=1 → save dialog; otherwise inline for the preview pane.
+        from pathlib import PurePath
+        stem = PurePath(job.filename).stem or "document"
         return FileResponse(
             job.output_path, media_type="application/pdf",
-            filename="translated.pdf", content_disposition_type="inline",
+            filename=f"{stem}_translated.pdf",
+            content_disposition_type="attachment" if download else "inline",
         )
 
     def _pdf_path(job, which: str) -> Path:
@@ -181,8 +186,8 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         raise HTTPException(status_code=400, detail="invalid document")
 
     @app.get("/api/jobs/{job_id}/pages")
-    def job_pages(job_id: str, which: str = "result", owner: str = Depends(_client_id)) -> dict:
-        job = _get_owned(job_id, owner)
+    def job_pages(job_id: str, which: str = "result") -> dict:
+        job = _get_job(job_id)
         path = _pdf_path(job, which)
         doc = fitz.open(path)
         try:
@@ -191,8 +196,8 @@ def create_app(store: JobStore | None = None) -> FastAPI:
             doc.close()
 
     @app.get("/api/jobs/{job_id}/page/{which}/{n}")
-    def job_page(job_id: str, which: str, n: int, owner: str = Depends(_client_id)):
-        job = _get_owned(job_id, owner)
+    def job_page(job_id: str, which: str, n: int):
+        job = _get_job(job_id)
         path = _pdf_path(job, which)
         doc = fitz.open(path)
         try:
@@ -220,8 +225,8 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         ]
 
     @app.get("/api/jobs/{job_id}/text")
-    def job_text(job_id: str, which: str = "result", owner: str = Depends(_client_id)) -> dict:
-        job = _get_owned(job_id, owner)
+    def job_text(job_id: str, which: str = "result") -> dict:
+        job = _get_job(job_id)
         if which == "original":
             path = job.input_path
         elif which == "result":
