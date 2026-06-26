@@ -378,3 +378,14 @@ def test_redesign_structure_present():
     # design tokens / fonts wired
     assert "#1B66C9" in html or "1B66C9" in client.get("/static/styles.css").text
     assert "Hanken Grotesk" in client.get("/static/styles.css").text
+
+
+def test_key_status_element_and_verify_behavior():
+    client = TestClient(create_app())
+    html = client.get("/").text
+    js = client.get("/static/app.js").text
+    assert 'id="keyStatus"' in html
+    # success message is shown only after re-reading settings to confirm persistence
+    assert "successfully" in js
+    # saveKey re-fetches /api/settings to verify the key actually saved
+    assert js.count("/api/settings") >= 2

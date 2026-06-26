@@ -133,7 +133,9 @@ class AnthropicProvider(_LLMProvider):
             self._client = client
         else:
             import anthropic
-            self._client = anthropic.Anthropic(api_key=api_key)
+            # Bound the call so a network/API stall surfaces as a job error rather
+            # than leaving the translation stuck indefinitely.
+            self._client = anthropic.Anthropic(api_key=api_key, timeout=60.0, max_retries=2)
 
     def _complete(self, system: str, user: str) -> str:
         msg = self._client.messages.create(
@@ -153,7 +155,7 @@ class OpenAIProvider(_LLMProvider):
             self._client = client
         else:
             import openai
-            self._client = openai.OpenAI(api_key=api_key)
+            self._client = openai.OpenAI(api_key=api_key, timeout=60.0, max_retries=2)
 
     def _complete(self, system: str, user: str) -> str:
         resp = self._client.chat.completions.create(

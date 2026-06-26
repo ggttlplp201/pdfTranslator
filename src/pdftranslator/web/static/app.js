@@ -48,6 +48,7 @@ async function safeDetail(res) {
 async function refreshEngineUi() {
   const engine = $("engine").value;
   const needsKey = engine === "claude" || engine === "openai";
+  clearKeyStatus();
   $("apiKeyWrap").classList.toggle("hidden", !needsKey);
   if (needsKey) {
     try {
@@ -57,16 +58,56 @@ async function refreshEngineUi() {
   }
 }
 
+function showKeyStatus(msg, ok) {
+  const el = $("keyStatus");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.remove("hidden", "ok", "err");
+  el.classList.add(ok ? "ok" : "err");
+}
+
+function clearKeyStatus() {
+  const el = $("keyStatus");
+  if (el) el.classList.add("hidden");
+}
+
 async function saveKey() {
   const engine = $("engine").value;
   const key = $("apiKey").value.trim();
-  if (!key) return;
-  const fd = new FormData();
-  fd.append("engine", engine);
-  fd.append("api_key", key);
-  const res = await fetch("/api/settings", { method: "POST", body: fd });
-  if (res.ok) { $("apiKey").value = ""; refreshEngineUi(); }
-  else showError((await safeDetail(res)) || "Could not save key.");
+  if (!key) { showKeyStatus("Enter a key first.", false); return; }
+
+  let res;
+  try {
+    const fd = new FormData();
+    fd.append("engine", engine);
+    fd.append("api_key", key);
+    res = await fetch("/api/settings", { method: "POST", body: fd });
+  } catch {
+    showKeyStatus("Could not reach the server.", false);
+    return;
+  }
+  if (!res.ok) {
+    showKeyStatus((await safeDetail(res)) || "Could not save key.", false);
+    return;
+  }
+
+  // Verify the key actually persisted before showing success — re-read settings
+  // and confirm this engine now reports a saved key.
+  let saved = false;
+  try {
+    const s = await (await fetch("/api/settings")).json();
+    saved = !!s[engine];
+  } catch {
+    saved = false;
+  }
+  if (saved) {
+    $("apiKey").value = "";
+    refreshEngineUi();
+    const label = engine === "claude" ? "Claude" : "OpenAI";
+    showKeyStatus(`${label} key uploaded successfully ✓`, true);
+  } else {
+    showKeyStatus("Key did not save — please try again.", false);
+  }
 }
 
 // ---- translate ----
