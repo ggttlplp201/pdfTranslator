@@ -124,3 +124,19 @@ def test_job_error_surfaces(monkeypatch):
     status = _wait(client, job_id)
     assert status["status"] == "error"
     assert "rate limited" in status["error"]
+
+
+def test_index_has_ui_elements():
+    client = TestClient(create_app())
+    html = client.get("/").text
+    assert 'id="dropzone"' in html
+    assert 'id="translateBtn"' in html
+    assert 'id="origFrame"' in html
+    assert 'id="transFrame"' in html
+    assert "/static/app.js" in html
+
+
+def test_app_js_served_with_logic():
+    client = TestClient(create_app())
+    js = client.get("/static/app.js").text
+    assert "/api/translate" in js
