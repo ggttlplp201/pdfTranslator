@@ -112,7 +112,7 @@ async function saveKey() {
 
 // ---- translate ----
 async function startTranslate() {
-  if (!state.file) return;
+  if (!state.file) { showError("Please choose a PDF first."); return; }
   $("origView").innerHTML = "";
   $("transView").innerHTML = "";
   $("translateBtn").disabled = true;
@@ -276,7 +276,14 @@ function wireUp() {
   }
   $("historyBtn").addEventListener("click", () => {
     $("historyPanel").classList.toggle("hidden");
-    refreshHistory();
+    if (!$("historyPanel").classList.contains("hidden")) refreshHistory();
+  });
+  if ($("historyClose")) {
+    $("historyClose").addEventListener("click", () => $("historyPanel").classList.add("hidden"));
+  }
+  // Esc closes the history panel
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") $("historyPanel").classList.add("hidden");
   });
 
   setBadges();

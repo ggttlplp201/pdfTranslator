@@ -389,3 +389,20 @@ def test_key_status_element_and_verify_behavior():
     assert "successfully" in js
     # saveKey re-fetches /api/settings to verify the key actually saved
     assert js.count("/api/settings") >= 2
+
+
+def test_history_has_close_control():
+    client = TestClient(create_app())
+    html = client.get("/").text
+    js = client.get("/static/app.js").text
+    assert 'id="historyClose"' in html
+    # close handler + Escape both hide the panel
+    assert "historyClose" in js
+    assert "Escape" in js
+
+
+def test_translate_warns_without_file():
+    client = TestClient(create_app())
+    js = client.get("/static/app.js").text
+    # clicking Translate with no file selected shows a warning instead of silently doing nothing
+    assert "Please choose a PDF first" in js

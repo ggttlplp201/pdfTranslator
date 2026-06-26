@@ -121,23 +121,34 @@ class FakeAnthropicClient:
 
 
 def test_anthropic_batch_returns_translations():
-    client = FakeAnthropicClient(['["你好", "世界"]'])
+    # Index-keyed JSON object: keys are line numbers, values the translations.
+    client = FakeAnthropicClient(['{"0": "你好", "1": "世界"}'])
     provider = providers.AnthropicProvider(api_key="x", client=client)
     assert provider.translate(["Hello", "World"], "en", "zh") == ["你好", "世界"]
-    assert len(client.calls) == 1  # one batched call
+    assert len(client.calls) == 1  # one batched call, no per-line fan-out
 
 
-def test_anthropic_falls_back_per_line_on_count_mismatch():
-    # First (batch) call returns the wrong count; then one call per line.
-    client = FakeAnthropicClient(['["only-one"]', '["A"]', '["B"]'])
+def test_anthropic_retries_only_missing_indices():
+    # First call drops index 1; the retry supplies just the missing one — never
+    # one call per line.
+    client = FakeAnthropicClient(['{"0": "A"}', '{"1": "B"}'])
     provider = providers.AnthropicProvider(api_key="x", client=client)
     out = provider.translate(["Hello", "World"], "en", "zh")
     assert out == ["A", "B"]
-    assert len(client.calls) == 3  # 1 failed batch + 2 per-line
+    assert len(client.calls) == 2  # initial + one retry for the missing index
+
+
+def test_anthropic_falls_back_to_original_when_unresolved():
+    # Model returns nothing usable on both attempts → keep originals, no loop.
+    client = FakeAnthropicClient(['{}'])
+    provider = providers.AnthropicProvider(api_key="x", client=client)
+    out = provider.translate(["Hello", "World"], "en", "zh")
+    assert out == ["Hello", "World"]
+    assert len(client.calls) == 2  # bounded: initial + one retry
 
 
 def test_anthropic_strips_code_fences():
-    client = FakeAnthropicClient(['```json\n["你好"]\n```'])
+    client = FakeAnthropicClient(['```json\n{"0": "你好"}\n```'])
     provider = providers.AnthropicProvider(api_key="x", client=client)
     assert provider.translate(["Hello"], "en", "zh") == ["你好"]
 

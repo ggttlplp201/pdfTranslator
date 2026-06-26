@@ -79,54 +79,83 @@ def _strip_fences(text: str) -> str:
 
 
 class _LLMProvider:
+    # Each line is anchored to an explicit index (a JSON object keyed by line
+    # number), not a bare array. A bare array let the model silently merge/split
+    # lines so the count drifted, which forced a slow one-call-per-line fallback
+    # (~40 calls per page). Index keys keep one call per batch and let us re-ask
+    # only for any indices that came back missing.
     SYSTEM = (
-        "You are a professional translator. You receive a JSON array of text lines. "
-        "Translate each line from {source} into {target}. Return ONLY a JSON array of "
-        "strings, the same length and order as the input, each being the translation of "
-        "the corresponding line. Preserve inline numbers, symbols and code. Do not add "
-        "commentary or code fences."
+        "You are a professional translator. You receive a JSON object whose keys are "
+        "line numbers and whose values are CONSECUTIVE lines of a single document in "
+        "{source} — a sentence is often split across several lines. Read all the lines "
+        "together for context, then translate the document into {target}. Return ONLY a "
+        "JSON object with the EXACT same keys; each value is the translation of that "
+        "line, divided so it still reads naturally line by line. Translate EVERY line — "
+        "including headings, table cells and fragments — and never leave the original "
+        "{source} text except for numbers, symbols, or code. No commentary, no code fences."
     )
 
-    def __init__(self, batch_size: int = 40):
+    def __init__(self, batch_size: int = 100):
         self._batch_size = batch_size
 
     def translate(self, texts: list[str], source: str, target: str) -> list[str]:
+        chunks = [texts[i : i + self._batch_size] for i in range(0, len(texts), self._batch_size)]
+        if len(chunks) <= 1:
+            return self._batch(chunks[0], source, target) if chunks else []
+        # Translate batches concurrently so a multi-batch page isn't serial.
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=min(4, len(chunks))) as pool:
+            results = list(pool.map(lambda c: self._batch(c, source, target), chunks))
         out: list[str] = []
-        for i in range(0, len(texts), self._batch_size):
-            out.extend(self._batch(texts[i : i + self._batch_size], source, target))
+        for r in results:
+            out.extend(r)
         return out
 
     def _batch(self, lines: list[str], source: str, target: str) -> list[str]:
         if not lines:
             return []
-        parsed = self._translate_lines(lines, source, target)
-        if parsed is not None and len(parsed) == len(lines):
-            return [str(x) for x in parsed]
-        # Count mismatch or parse failure: translate one line at a time.
-        result = []
-        for line in lines:
+        result: list[str | None] = [None] * len(lines)
+        # Indices that still need a translation (skip whitespace-only lines).
+        pending = [i for i, line in enumerate(lines) if line.strip()]
+        for i, line in enumerate(lines):
             if not line.strip():
-                result.append(line)
-                continue
-            single = self._translate_lines([line], source, target)
-            result.append(str(single[0]) if single else line)
-        return result
+                result[i] = line
+        # One batched call, then at most one retry for any indices the model
+        # dropped (or a transient empty/garbage response) — never a call per line.
+        for _ in range(2):
+            if not pending:
+                break
+            mapping = {str(i): lines[i] for i in pending}
+            got = self._translate_map(mapping, source, target) or {}
+            still: list[int] = []
+            for i in pending:
+                value = got.get(str(i))
+                if value is None:
+                    still.append(i)
+                else:
+                    result[i] = str(value)
+            pending = still
+        # Anything still missing: fall back to the original text for that line.
+        for i in pending:
+            result[i] = lines[i]
+        return [r if r is not None else lines[idx] for idx, r in enumerate(result)]
 
-    def _translate_lines(self, lines: list[str], source: str, target: str):
+    def _translate_map(self, mapping: dict, source: str, target: str):
         system = self.SYSTEM.format(source=_lang_name(source), target=_lang_name(target))
-        raw = self._complete(system, json.dumps(lines, ensure_ascii=False))
+        raw = self._complete(system, json.dumps(mapping, ensure_ascii=False))
         try:
             data = json.loads(_strip_fences(raw))
         except (ValueError, TypeError):
             return None
-        return data if isinstance(data, list) else None
+        return data if isinstance(data, dict) else None
 
     def _complete(self, system: str, user: str) -> str:
         raise NotImplementedError
 
 
 class AnthropicProvider(_LLMProvider):
-    def __init__(self, api_key: str, model: str = "claude-haiku-4-5", client=None, batch_size: int = 40):
+    def __init__(self, api_key: str, model: str = "claude-haiku-4-5", client=None, batch_size: int = 100):
         super().__init__(batch_size)
         self._model = model
         if client is not None:
@@ -139,7 +168,7 @@ class AnthropicProvider(_LLMProvider):
 
     def _complete(self, system: str, user: str) -> str:
         msg = self._client.messages.create(
-            model=self._model, max_tokens=8000, system=system,
+            model=self._model, max_tokens=16000, system=system,
             messages=[{"role": "user", "content": user}],
         )
         return "".join(
@@ -148,7 +177,7 @@ class AnthropicProvider(_LLMProvider):
 
 
 class OpenAIProvider(_LLMProvider):
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", client=None, batch_size: int = 40):
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", client=None, batch_size: int = 100):
         super().__init__(batch_size)
         self._model = model
         if client is not None:
