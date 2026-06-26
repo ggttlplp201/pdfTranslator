@@ -32,6 +32,8 @@ where = ["src"]
 # Ship the web UI assets inside the installed package — without this the wheel
 # omits them and the server crashes at startup (StaticFiles: directory missing).
 "pdftranslator.web" = ["static/*"]
+# Bundle the embeddable Noto fonts (real fonts, embedded + subset into output).
+"pdftranslator" = ["assets/fonts/*.ttf"]
 
 [tool.pytest.ini_options]
 # Put the package on sys.path directly so the suite does not depend on the

@@ -16,6 +16,7 @@ SRC = os.path.join(ROOT, "src")
 
 # Bundle the web UI assets at the same relative path the app expects.
 datas = [(os.path.join(SRC, "pdftranslator", "web", "static"), "pdftranslator/web/static")]
+datas += [(os.path.join(SRC, "pdftranslator", "assets", "fonts"), "pdftranslator/assets/fonts")]
 datas += collect_data_files("fitz")  # PyMuPDF runtime resources
 
 # uvicorn loads its protocol/loop implementations dynamically; the LLM SDKs are

@@ -6,7 +6,7 @@ from . import fonts, lang, layout, terminology
 def translate_pdf(input_path, output_path, source, target, provider, progress=None) -> None:
     lang.validate_source(source)
     lang.validate_target(target)
-    fontname = fonts.font_for_language(target)
+    fontname, fontfile = fonts.font_for_language(target)
 
     doc = fitz.open(input_path)
     try:
@@ -33,9 +33,15 @@ def translate_pdf(input_path, output_path, source, target, provider, progress=No
                 if kept:
                     sel_units = [u for u, _ in kept]
                     layout.redact_units(page, sel_units)
-                    layout.insert_translations(page, sel_units, [t for _, t in kept], fontname)
+                    layout.insert_translations(page, sel_units, [t for _, t in kept], fontname, fontfile)
             if progress is not None:
                 progress(index, count)
+        # Subset embedded fonts so a 10MB CJK font shrinks to the few KB actually
+        # used, keeping output files small.
+        try:
+            doc.subset_fonts()
+        except Exception:
+            pass  # subsetting is an optimization; never fail the translation over it
         doc.save(output_path, garbage=4, deflate=True)
     finally:
         doc.close()

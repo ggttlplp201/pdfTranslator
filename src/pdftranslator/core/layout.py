@@ -101,21 +101,26 @@ def redact_units(page, units: list[TextUnit]) -> None:
                     page.insert_link(restore)
 
 
-def _fit_textbox(width: float, height: float, text: str, fontname: str, max_size: float) -> float:
+def _fit_textbox(width: float, height: float, text: str, fontname: str, max_size: float,
+                 fontfile: str | None = None) -> float:
     """Largest size <= max_size (floor 4.0) at which `text` fits a width x height box.
 
     Measured with the real renderer (insert_textbox on a scratch page), which
     handles wrapping and mixed CJK/Latin widths correctly. One size for the whole
-    block keeps the font consistent within a paragraph.
+    block keeps the font consistent within a paragraph. The font is registered
+    once on a single reused scratch page (the per-size leftover value is
+    independent of prior drawing), so the bundled font is parsed only once here.
     """
     box_w = max(width, 1.0)
     box_h = max(height, 1.0) + 2.0
     rect = fitz.Rect(0, 0, box_w, box_h)
     scratch = fitz.open()
     try:
+        sp = scratch.new_page(width=box_w + 4, height=box_h + 10)
+        if fontfile:
+            sp.insert_font(fontname=fontname, fontfile=fontfile)
         size = max_size
         while size >= _MIN_SIZE:
-            sp = scratch.new_page(width=box_w + 4, height=box_h + 10)
             leftover = sp.insert_textbox(rect, text, fontsize=size, fontname=fontname)
             if leftover >= 0:  # whole text fit at this size
                 return size
@@ -157,19 +162,24 @@ def _grow_bounds(u: TextUnit, units: list[TextUnit], page_rect) -> tuple:
     return x0, y0, max(x1, right_limit), max(y1, bottom_limit)
 
 
-def insert_translations(page, units: list[TextUnit], translations: list[str], fontname: str) -> None:
+def insert_translations(page, units: list[TextUnit], translations: list[str], fontname: str,
+                        fontfile: str | None = None) -> None:
     page_rect = page.rect
+    # Register the bundled font on the page once so every block embeds (and later
+    # subsets) the same real font instead of a built-in alias.
+    if fontfile:
+        page.insert_font(fontname=fontname, fontfile=fontfile)
     for u, text in zip(units, translations):
         if not text.strip():
             continue
         x0, y0, x1, y1 = u.bbox
-        size = _fit_textbox(x1 - x0, y1 - y0, text, fontname, u.size)
+        size = _fit_textbox(x1 - x0, y1 - y0, text, fontname, u.size, fontfile)
         # If the translation only fits at an unreadably small size (it's wider
         # than the source, e.g. a short label that grew when translated), recover
         # by reflowing into adjacent whitespace instead of shrinking to nothing.
         if size < min(u.size, _READABLE):
             gx0, gy0, gx1, gy1 = _grow_bounds(u, units, page_rect)
-            grown = _fit_textbox(gx1 - gx0, gy1 - gy0, text, fontname, u.size)
+            grown = _fit_textbox(gx1 - gx0, gy1 - gy0, text, fontname, u.size, fontfile)
             if grown > size:
                 x0, y0, x1, y1, size = gx0, gy0, gx1, gy1, grown
         color = fitz.sRGB_to_pdf(u.color)

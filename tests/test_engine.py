@@ -63,3 +63,28 @@ def test_translate_pdf_rejects_bad_target(tmp_path):
     with pytest.raises(ValueError):
         engine.translate_pdf(str(src), str(tmp_path / "o.pdf"),
                              source="auto", target="auto", provider=FakeProvider())
+
+
+def test_output_embeds_real_font_and_keeps_trademark(tmp_path):
+    """Translated output must embed a real bundled font (not the 'china-s' alias)
+    and render the ® glyph that the built-in CJK font drops."""
+    import fitz
+
+    class CJKFake:
+        def translate(self, texts, source, target):
+            return ["Pladur® 注册商标说明文字内容" for _ in texts]
+
+    src = tmp_path / "in.pdf"
+    out = tmp_path / "out.pdf"
+    doc = fitz.open()
+    doc.new_page().insert_text((72, 72), "Pladur registered trademark notice text", fontsize=11)
+    doc.save(str(src)); doc.close()
+
+    engine.translate_pdf(str(src), str(out), source="auto", target="zh", provider=CJKFake())
+
+    result = fitz.open(str(out))
+    fonts_used = [f[3] for f in result.get_page_fonts(0)]  # base font names
+    text = result[0].get_text("text")
+    result.close()
+    assert any("Noto" in f for f in fonts_used), fonts_used  # embedded real font
+    assert "®" in text  # trademark glyph preserved (china-s would drop it)
