@@ -347,25 +347,23 @@ def test_translate_defaults_to_google(fake_google):
     assert client.get(f"/api/jobs/{job_id}").json()["engine"] == "google"
 
 
-def test_app_js_calls_text_and_settings_endpoints():
+def test_app_js_renders_page_images_and_settings():
     client = TestClient(create_app())
     js = client.get("/static/app.js").text
     assert "/api/translate" in js
-    assert "/api/jobs/" in js and "/text?which=" in js
+    # panes render the actual rendered PDF pages as images, not text
+    assert "/pages?which=" in js and "/page/" in js
     assert "/api/settings" in js
     assert "engine" in js  # sends the engine field
 
 
-def test_text_reader_styles_present_and_marker_classes_match():
+def test_page_image_style_present():
     client = TestClient(create_app())
     css = client.get("/static/styles.css").text
     js = client.get("/static/app.js").text
-    assert "pre-wrap" in css  # extracted newlines are preserved
-    assert ".pagetext" in css
-    # the page-marker class used in JS must be defined in CSS
-    import re
-    js_marker = "page-marker" if "page-marker" in js else "pagemarker"
-    assert js_marker in css, f"marker class {js_marker} used in JS but not styled in CSS"
+    # the image class used by the JS must be styled in the CSS
+    assert ".pdfpage" in css
+    assert "pdfpage" in js
 
 
 def test_redesign_structure_present():

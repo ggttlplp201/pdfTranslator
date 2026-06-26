@@ -667,6 +667,18 @@ body {
   color: #34342F;
 }
 
+/* Rendered PDF page images (actual layout/images preserved) */
+.pdfpage {
+  display: block;
+  width: 100%;
+  margin: 0 auto 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(60, 64, 67, .08);
+}
+.pdfpage:last-child {
+  margin-bottom: 0;
+}
+
 /* Page markers */
 .page-marker {
   display: flex;

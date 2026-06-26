@@ -91,7 +91,7 @@ async function startTranslate() {
 
   const data = await res.json();
   state.jobId = data.job_id;
-  loadText("original", "origView");
+  loadPages("original", "origView");
   pollStatus();
 }
 
@@ -133,7 +133,7 @@ function pollStatus() {
         $("fileMetaInfo").textContent =
           humanSize(state.file.size) + ` · ${pages} page${pages !== 1 ? "s" : ""}`;
       }
-      await loadText("result", "transView");
+      await loadPages("result", "transView");
       // #downloadBtn is a <button>, not <a> — store URL and trigger via click handler
       state.downloadUrl = `/api/jobs/${state.jobId}/result`;
       showStatus("statusDone");
@@ -145,36 +145,27 @@ function pollStatus() {
   }, 1000);
 }
 
-// ---- text-reader panes ----
-async function loadText(which, viewId) {
+// ---- page-image panes ----
+// Render the ACTUAL PDF pages as images (original layout, images, fonts all
+// preserved) by pointing at the per-page render endpoints. This shows the
+// format-preserved document, not a text transcription.
+async function loadPages(which, viewId) {
   const view = $(viewId);
   view.innerHTML = "";
   let res;
-  try { res = await fetch(`/api/jobs/${state.jobId}/text?which=${which}`); }
+  try { res = await fetch(`/api/jobs/${state.jobId}/pages?which=${which}`); }
   catch { view.textContent = "Preview unavailable."; return; }
   if (!res.ok) { view.textContent = "Preview unavailable."; return; }
   const { pages } = await res.json();
-  pages.forEach((text, i) => {
-    if (i > 0) {
-      const marker = document.createElement("div");
-      marker.className = "page-marker";
-      const ruleA = document.createElement("span");
-      ruleA.className = "page-marker-rule";
-      const label = document.createElement("span");
-      label.className = "page-marker-label";
-      label.textContent = which === "result" ? `第 ${i + 1} 页` : `PAGE ${i + 1}`;
-      const ruleB = document.createElement("span");
-      ruleB.className = "page-marker-rule";
-      marker.appendChild(ruleA);
-      marker.appendChild(label);
-      marker.appendChild(ruleB);
-      view.appendChild(marker);
-    }
-    const p = document.createElement("div");
-    p.className = "pagetext";
-    p.textContent = text;
-    view.appendChild(p);
-  });
+  if (!pages) { view.textContent = "No pages to preview."; return; }
+  for (let i = 0; i < pages; i++) {
+    const img = document.createElement("img");
+    img.className = "pdfpage";
+    img.loading = "lazy";
+    img.alt = `${which} page ${i + 1}`;
+    img.src = `/api/jobs/${state.jobId}/page/${which}/${i}`;
+    view.appendChild(img);
+  }
 }
 
 // ---- history (session-only) ----
@@ -200,10 +191,10 @@ async function refreshHistory() {
 async function openHistory(jobId) {
   state.jobId = jobId;
   $("historyPanel").classList.add("hidden");
-  await loadText("original", "origView");
+  await loadPages("original", "origView");
   const s = await (await fetch(`/api/jobs/${jobId}`)).json();
   if (s.status === "done") {
-    await loadText("result", "transView");
+    await loadPages("result", "transView");
     state.downloadUrl = `/api/jobs/${jobId}/result`;
     showStatus("statusDone");
   }
