@@ -40,3 +40,25 @@ def test_extract_dehyphenates_and_joins_block():
     assert "vibration" in joined
     assert "recep-" not in joined
     doc.close()
+
+
+def test_numeric_only_blocks_are_left_untouched():
+    import fitz
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "42", fontsize=11)          # standalone number
+    page.insert_text((72, 140), "40–60", fontsize=11)  # numeric range
+    page.insert_text((72, 180), "Hello world", fontsize=11)  # real text
+    units = layout.extract_units(page)
+    joined = " ".join(u.text for u in units)
+    # numbers are not extracted for translation; only the real text is a unit
+    assert "Hello world" in joined
+    assert "42" not in joined and "40" not in joined
+
+    # after the full rewrite the numbers survive verbatim, the text is replaced
+    layout.redact_units(page, units)
+    layout.insert_translations(page, units, ["你好世界"], fontname="china-s")
+    after = page.get_text("text")
+    assert "42" in after and "40" in after and "60" in after  # numbers untouched
+    assert "Hello" not in after                       # text was translated/redacted
+    doc.close()

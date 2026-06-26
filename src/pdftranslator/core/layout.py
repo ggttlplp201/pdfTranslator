@@ -6,6 +6,15 @@ from .models import TextUnit
 
 _MIN_SIZE = 4.0
 
+# Letters/ideographs worth translating: Latin (incl. accented for Portuguese)
+# and CJK. A block with none of these — only digits, punctuation, math symbols —
+# is left completely untouched so numbers keep their exact font, size and place.
+_TRANSLATABLE = re.compile(r"[A-Za-zÀ-ɏ一-鿿㐀-䶿]")
+
+
+def _has_translatable(text: str) -> bool:
+    return bool(_TRANSLATABLE.search(text))
+
 
 def _block_text(block) -> str:
     """Combine a block's lines into one paragraph, de-hyphenating soft line breaks.
@@ -42,6 +51,11 @@ def extract_units(page) -> list[TextUnit]:
             continue
         text = _block_text(block)
         if not text.strip():
+            continue
+        # Leave purely numeric/symbolic blocks (page numbers, figure numbers,
+        # measurements like "40", data values) exactly as they are: not a unit,
+        # so they're never redacted, translated, or re-rendered.
+        if not _has_translatable(text):
             continue
         spans = [s for line in block.get("lines", []) for s in line.get("spans", [])]
         size = max((s.get("size", 10.0) for s in spans), default=10.0)
