@@ -71,31 +71,74 @@ def test_fit_textbox_shrinks_long_text():
     assert small >= 4.0
 
 
-def test_mixed_cjk_latin_does_not_overflow_column():
-    """A long Chinese+Latin translation must stay within the original column width.
+def test_mixed_cjk_latin_does_not_overflow_into_neighbor():
+    """A long Chinese+Latin translation must not run past its column into the
+    neighbouring block.
 
     Regression for the built-in CJK font under-measuring Latin glyphs, which let
-    mixed-script lines run off the right edge of the page.
+    mixed-script lines run off to the right; now also that controlled growth
+    respects an adjacent column.
     """
+    from pdftranslator.core.models import TextUnit
     doc = fitz.open()
     page = doc.new_page()
     # An English source line occupying a fixed-width column.
     page.insert_text((72, 100), "For more examples see the docs.", fontsize=10)
     units = layout.extract_units(page)
     box_right = units[0].bbox[2]
+    # A neighbouring block immediately to the right marks the column boundary.
+    neighbor = TextUnit(text="x", bbox=(box_right + 6, 100, box_right + 120, 112), size=10.0, color=0)
 
     long_mixed = "用于纸质的 HTML 和 CSS 发布，请参阅 css4.pub 了解更多信息内容内容内容内容"
     layout.redact_units(page, units)
-    layout.insert_translations(page, units, [long_mixed], fontname="china-s")
+    layout.insert_translations(page, units + [neighbor], [long_mixed, "x"], fontname="china-s")
 
     data = page.get_text("dict")
     rights = [
         span["bbox"][2]
         for block in data["blocks"] if block.get("type") == 0
         for line in block["lines"]
-        for span in line["spans"] if span["text"].strip()
+        for span in line["spans"]
+        if any("一" <= ch <= "鿿" for ch in span["text"])  # the CJK translation only
     ]
     assert rights, "no translated text was inserted"
-    # Inserted text must not extend past the original column's right edge.
-    assert max(rights) <= box_right + 2, (max(rights), box_right)
+    # Inserted text must not cross into the neighbouring column.
+    assert max(rights) <= neighbor.bbox[0], (max(rights), neighbor.bbox[0])
+    doc.close()
+
+
+def test_short_label_recovers_readable_size():
+    """A short label whose translation is wider should grow into the empty space
+    beside it instead of shrinking to an unreadable size."""
+    from pdftranslator.core.models import TextUnit
+    doc = fitz.open()
+    page = doc.new_page()  # 612 x 792, lots of empty space to the right
+    u = TextUnit(text="CRI: 83", bbox=(60, 100, 96, 112), size=9.0, color=0)
+    layout.insert_translations(page, [u], ["显色指数：83"], fontname="china-s")
+    spans = [
+        s for b in page.get_text("dict")["blocks"] if b.get("type") == 0
+        for l in b["lines"] for s in l["spans"] if s["text"].strip()
+    ]
+    assert spans
+    assert max(s["size"] for s in spans) >= 7.0  # readable, not crushed to ~4
+    doc.close()
+
+
+def test_growth_bounded_by_right_neighbor():
+    """Growing into whitespace must stop at a neighbouring block (no column/cell
+    invasion)."""
+    from pdftranslator.core.models import TextUnit
+    doc = fitz.open()
+    page = doc.new_page()
+    short = TextUnit(text="CRI: 83", bbox=(60, 100, 96, 112), size=9.0, color=0)
+    neighbor = TextUnit(text="x", bbox=(120, 100, 200, 112), size=9.0, color=0)
+    layout.insert_translations(
+        page, [short, neighbor], ["显色指数显色指数显色指数", "y"], fontname="china-s"
+    )
+    invaders = [
+        s for b in page.get_text("dict")["blocks"] if b.get("type") == 0
+        for l in b["lines"] for s in l["spans"] if "显" in s["text"]
+    ]
+    assert invaders
+    assert max(s["bbox"][2] for s in invaders) <= 120  # stayed left of the neighbour
     doc.close()

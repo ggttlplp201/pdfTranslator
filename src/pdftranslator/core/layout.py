@@ -106,15 +106,56 @@ def _fit_textbox(width: float, height: float, text: str, fontname: str, max_size
         scratch.close()
 
 
+# Below this the text is too small to read; if a block fits only this small we
+# try to grow it into surrounding whitespace before settling.
+_READABLE = 7.0
+_EXPAND_PAD = 2.0   # keep a small gap from neighbours when growing
+_MAX_GROW_X = 3.0   # never grow wider than this multiple of the original
+_MAX_GROW_Y = 4.0   # nor taller
+
+
+def _grow_bounds(u: TextUnit, units: list[TextUnit], page_rect) -> tuple:
+    """Expand a cramped block into adjacent empty space — rightward first, then
+    downward — stopping at the nearest neighbouring block on each side (so
+    columns and table cells are never invaded), at the page margin, and at a sane
+    multiple of the original size. Full-width blocks barely move (the page edge or
+    a neighbour bounds them); short labels gain the room to render readably.
+    """
+    x0, y0, x1, y1 = u.bbox
+    w, h = x1 - x0, y1 - y0
+    right_limit = min(page_rect.x1 - 4.0, x0 + w * _MAX_GROW_X)
+    bottom_limit = min(page_rect.y1 - 4.0, y0 + h * _MAX_GROW_Y)
+    for o in units:
+        if o is u:
+            continue
+        ox0, oy0, ox1, oy1 = o.bbox
+        # A block to the right sharing vertical extent caps rightward growth.
+        if ox0 >= x1 - 1 and oy0 < y1 - 1 and oy1 > y0 + 1:
+            right_limit = min(right_limit, ox0 - _EXPAND_PAD)
+        # A block below sharing horizontal extent caps downward growth.
+        if oy0 >= y1 - 1 and ox0 < x1 - 1 and ox1 > x0 + 1:
+            bottom_limit = min(bottom_limit, oy0 - _EXPAND_PAD)
+    return x0, y0, max(x1, right_limit), max(y1, bottom_limit)
+
+
 def insert_translations(page, units: list[TextUnit], translations: list[str], fontname: str) -> None:
+    page_rect = page.rect
     for u, text in zip(units, translations):
         if not text.strip():
             continue
         x0, y0, x1, y1 = u.bbox
         size = _fit_textbox(x1 - x0, y1 - y0, text, fontname, u.size)
+        # If the translation only fits at an unreadably small size (it's wider
+        # than the source, e.g. a short label that grew when translated), recover
+        # by reflowing into adjacent whitespace instead of shrinking to nothing.
+        if size < min(u.size, _READABLE):
+            gx0, gy0, gx1, gy1 = _grow_bounds(u, units, page_rect)
+            grown = _fit_textbox(gx1 - gx0, gy1 - gy0, text, fontname, u.size)
+            if grown > size:
+                x0, y0, x1, y1, size = gx0, gy0, gx1, gy1, grown
         color = fitz.sRGB_to_pdf(u.color)
         # Reflow the whole paragraph into its block at one size — consistent
-        # sizing, and confined to the block width so it never overflows the page.
+        # sizing, confined to the (possibly grown) block so it never overflows.
         page.insert_textbox(
             fitz.Rect(x0, y0, x1, y1 + 2), text,
             fontsize=size, fontname=fontname, color=color, align=0,
