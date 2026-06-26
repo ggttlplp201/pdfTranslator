@@ -157,8 +157,17 @@ async function loadText(which, viewId) {
   pages.forEach((text, i) => {
     if (i > 0) {
       const marker = document.createElement("div");
-      marker.className = "pagemarker";
-      marker.textContent = which === "result" ? `第 ${i + 1} 页` : `PAGE ${i + 1}`;
+      marker.className = "page-marker";
+      const ruleA = document.createElement("span");
+      ruleA.className = "page-marker-rule";
+      const label = document.createElement("span");
+      label.className = "page-marker-label";
+      label.textContent = which === "result" ? `第 ${i + 1} 页` : `PAGE ${i + 1}`;
+      const ruleB = document.createElement("span");
+      ruleB.className = "page-marker-rule";
+      marker.appendChild(ruleA);
+      marker.appendChild(label);
+      marker.appendChild(ruleB);
       view.appendChild(marker);
     }
     const p = document.createElement("div");

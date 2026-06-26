@@ -356,6 +356,18 @@ def test_app_js_calls_text_and_settings_endpoints():
     assert "engine" in js  # sends the engine field
 
 
+def test_text_reader_styles_present_and_marker_classes_match():
+    client = TestClient(create_app())
+    css = client.get("/static/styles.css").text
+    js = client.get("/static/app.js").text
+    assert "pre-wrap" in css  # extracted newlines are preserved
+    assert ".pagetext" in css
+    # the page-marker class used in JS must be defined in CSS
+    import re
+    js_marker = "page-marker" if "page-marker" in js else "pagemarker"
+    assert js_marker in css, f"marker class {js_marker} used in JS but not styled in CSS"
+
+
 def test_redesign_structure_present():
     client = TestClient(create_app())
     html = client.get("/").text

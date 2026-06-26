@@ -651,6 +651,22 @@ body {
   color: #34342F;
 }
 
+/* Extracted text blocks */
+.pagetext {
+  white-space: pre-wrap;
+  font-size: 14.5px;
+  line-height: 1.78;
+  color: var(--text-body);
+  margin: 0 0 20px;
+}
+
+.pane-trans .pagetext {
+  font-family: 'Noto Sans SC', 'Hanken Grotesk', sans-serif;
+  font-size: 15px;
+  line-height: 1.95;
+  color: #34342F;
+}
+
 /* Page markers */
 .page-marker {
   display: flex;
