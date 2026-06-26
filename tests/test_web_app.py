@@ -1,5 +1,38 @@
+import time
+
+import fitz
+import requests
+import pytest
 from fastapi.testclient import TestClient
 from pdftranslator.web.app import create_app
+from pdftranslator.core import providers
+
+
+def _pdf_bytes(text="hello world"):
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), text, fontsize=12)
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def _wait(client, job_id, timeout=10):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        s = client.get(f"/api/jobs/{job_id}").json()
+        if s["status"] != "running":
+            return s
+        time.sleep(0.05)
+    raise AssertionError("job did not finish in time")
+
+
+@pytest.fixture
+def fake_google(monkeypatch):
+    class Fake:
+        def translate(self, texts, source, target):
+            return [t.upper() for t in texts]
+    monkeypatch.setattr(providers, "build_provider", lambda name: Fake())
 
 
 def test_index_served():
@@ -13,3 +46,81 @@ def test_static_mounted():
     client = TestClient(create_app())
     resp = client.get("/static/styles.css")
     assert resp.status_code == 200
+
+
+def test_translate_then_result_has_translation(fake_google):
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/translate",
+        files={"file": ("in.pdf", _pdf_bytes("hello"), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    )
+    assert resp.status_code == 200
+    job_id = resp.json()["job_id"]
+
+    status = _wait(client, job_id)
+    assert status["status"] == "done", status
+
+    result = client.get(f"/api/jobs/{job_id}/result")
+    assert result.status_code == 200
+    assert result.content[:5].startswith(b"%PDF")
+    doc = fitz.open(stream=result.content, filetype="pdf")
+    text = doc[0].get_text("text")
+    doc.close()
+    assert "HELLO" in text
+
+
+def test_original_is_served(fake_google):
+    client = TestClient(create_app())
+    job_id = client.post(
+        "/api/translate",
+        files={"file": ("in.pdf", _pdf_bytes("hello"), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    resp = client.get(f"/api/jobs/{job_id}/original")
+    assert resp.status_code == 200
+    assert resp.content[:5].startswith(b"%PDF")
+
+
+def test_result_404_before_done(fake_google):
+    client = TestClient(create_app())
+    # unknown job id → 404
+    assert client.get("/api/jobs/nope/result").status_code == 404
+    assert client.get("/api/jobs/nope").status_code == 404
+
+
+def test_bad_target_is_400(fake_google):
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/translate",
+        files={"file": ("in.pdf", _pdf_bytes(), "application/pdf")},
+        data={"source": "auto", "target": "fr"},
+    )
+    assert resp.status_code == 400
+
+
+def test_non_pdf_is_400(fake_google):
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/translate",
+        files={"file": ("in.txt", b"not a pdf", "text/plain")},
+        data={"source": "auto", "target": "en"},
+    )
+    assert resp.status_code == 400
+
+
+def test_job_error_surfaces(monkeypatch):
+    class Boom:
+        def translate(self, texts, source, target):
+            raise requests.RequestException("rate limited")
+    monkeypatch.setattr(providers, "build_provider", lambda name: Boom())
+
+    client = TestClient(create_app())
+    job_id = client.post(
+        "/api/translate",
+        files={"file": ("in.pdf", _pdf_bytes(), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    status = _wait(client, job_id)
+    assert status["status"] == "error"
+    assert "rate limited" in status["error"]
