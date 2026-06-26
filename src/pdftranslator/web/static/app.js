@@ -34,9 +34,14 @@ async function loadPages(which, containerId) {
   container.innerHTML = "";
   let res;
   try { res = await fetch(`/api/jobs/${state.jobId}/pages?which=${which}`); }
-  catch { return; }
-  if (!res.ok) return;
+  catch { container.textContent = "Preview unavailable (network error)."; return; }
+  if (!res.ok) {
+    container.textContent =
+      "Preview unavailable — restart the server so it picks up the latest version.";
+    return;
+  }
   const { pages } = await res.json();
+  if (!pages) { container.textContent = "No pages to preview."; return; }
   for (let i = 0; i < pages; i++) {
     const img = document.createElement("img");
     img.className = "pdfpage";
