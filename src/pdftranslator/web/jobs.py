@@ -1,12 +1,13 @@
 import shutil
 import tempfile
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from ..core import engine, providers
+from ..core import engine
 
 
 @dataclass
@@ -14,13 +15,17 @@ class Job:
     id: str
     source: str
     target: str
-    provider_name: str
+    engine: str
+    filename: str
+    size_bytes: int
+    page_count: int
     input_path: Path
     output_path: Path
     tmpdir: Path
+    provider: object = None
+    created_at: float = 0.0
     status: str = "running"
     page: int = 0
-    page_count: int = 0
     error: Optional[str] = None
     thread: Optional[threading.Thread] = field(default=None, repr=False, compare=False)
 
@@ -33,15 +38,19 @@ class JobStore:
         self._max_jobs = max_jobs
         self._runner = runner or self._translate
 
-    def create(self, data: bytes, source: str, target: str, provider_name: str = "google") -> Job:
+    def create(self, data: bytes, source: str, target: str, *, engine: str = "google",
+               provider: object = None, filename: str = "document.pdf",
+               page_count: int = 0) -> Job:
         job_id = uuid.uuid4().hex
         tmpdir = Path(tempfile.mkdtemp(prefix="pdftr-"))
         input_path = tmpdir / "input.pdf"
         output_path = tmpdir / "output.pdf"
         input_path.write_bytes(data)
         job = Job(
-            id=job_id, source=source, target=target, provider_name=provider_name,
+            id=job_id, source=source, target=target, engine=engine,
+            filename=filename, size_bytes=len(data), page_count=page_count,
             input_path=input_path, output_path=output_path, tmpdir=tmpdir,
+            provider=provider, created_at=time.time(),
         )
         with self._lock:
             self._jobs[job_id] = job
@@ -56,6 +65,10 @@ class JobStore:
         with self._lock:
             return self._jobs.get(job_id)
 
+    def list(self) -> list[Job]:
+        with self._lock:
+            return [self._jobs[i] for i in reversed(self._order) if i in self._jobs]
+
     def _evict_locked(self) -> None:
         while len(self._order) > self._max_jobs:
             victim_id = None
@@ -65,7 +78,7 @@ class JobStore:
                     victim_id = jid
                     break
             if victim_id is None:
-                break  # all over-cap jobs still running; keep them
+                break
             self._order.remove(victim_id)
             old = self._jobs.pop(victim_id, None)
             if old is not None:
@@ -80,14 +93,14 @@ class JobStore:
             job.error = f"Translation failed: {exc}"
 
     def _translate(self, job: Job) -> None:
-        provider = providers.build_provider(job.provider_name)
+        if job.provider is None:
+            raise RuntimeError("no translation provider configured")
 
         def progress(index: int, count: int) -> None:
             job.page = index + 1
-            job.page_count = count
 
         engine.translate_pdf(
             str(job.input_path), str(job.output_path),
             source=job.source, target=job.target,
-            provider=provider, progress=progress,
+            provider=job.provider, progress=progress,
         )
