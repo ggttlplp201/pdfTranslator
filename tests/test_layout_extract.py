@@ -26,3 +26,17 @@ def test_extract_units_skips_blank_lines():
     units = layout.extract_units(page)
     assert units == []
     doc.close()
+
+
+def test_extract_dehyphenates_and_joins_block():
+    import fitz
+    doc = fitz.open()
+    page = doc.new_page()
+    # A single text block whose lines break a word with a soft hyphen.
+    page.insert_text((72, 100), "recep-\ntors detect a fine vibra-\ntion.", fontsize=11)
+    units = layout.extract_units(page)
+    joined = " ".join(u.text for u in units)
+    assert "receptors" in joined  # soft hyphen removed, word rejoined
+    assert "vibration" in joined
+    assert "recep-" not in joined
+    doc.close()

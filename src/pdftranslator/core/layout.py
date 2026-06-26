@@ -1,24 +1,52 @@
+import re
+
 import fitz
 
 from .models import TextUnit
 
+_MIN_SIZE = 4.0
+
+
+def _block_text(block) -> str:
+    """Combine a block's lines into one paragraph, de-hyphenating soft line breaks.
+
+    PDFs wrap text mid-word with a hyphen (e.g. "spin-" / "dles"). Joining the
+    lines into one paragraph — and dropping those soft hyphens — lets the
+    translator see whole sentences (far better context) instead of fragments.
+    """
+    out = ""
+    for line in block.get("lines", []):
+        line_text = "".join(s.get("text", "") for s in line.get("spans", []))
+        if not line_text:
+            continue
+        if not out:
+            out = line_text
+        elif re.search(r"[A-Za-z]-$", out) and line_text[:1].islower():
+            # Soft hyphen word-break: drop the hyphen and join directly.
+            out = out[:-1] + line_text
+        else:
+            out = out.rstrip() + " " + line_text.lstrip()
+    return out
+
 
 def extract_units(page) -> list[TextUnit]:
+    """One TextUnit per text block (paragraph), text de-hyphenated and joined.
+
+    Block-level (not line-level) so translation has full-sentence context and a
+    paragraph can be reflowed at a single, consistent font size.
+    """
     units: list[TextUnit] = []
     data = page.get_text("dict")
     for block in data.get("blocks", []):
         if block.get("type") != 0:  # 0 == text block
             continue
-        for line in block.get("lines", []):
-            spans = line.get("spans", [])
-            text = "".join(s.get("text", "") for s in spans)
-            if not text.strip():
-                continue
-            size = max((s.get("size", 10.0) for s in spans), default=10.0)
-            color = spans[0].get("color", 0) if spans else 0
-            units.append(
-                TextUnit(text=text, bbox=tuple(line["bbox"]), size=size, color=color)
-            )
+        text = _block_text(block)
+        if not text.strip():
+            continue
+        spans = [s for line in block.get("lines", []) for s in line.get("spans", [])]
+        size = max((s.get("size", 10.0) for s in spans), default=10.0)
+        color = spans[0].get("color", 0) if spans else 0
+        units.append(TextUnit(text=text, bbox=tuple(block["bbox"]), size=size, color=color))
     return units
 
 
@@ -40,53 +68,28 @@ def redact_units(page, units: list[TextUnit]) -> None:
                     page.insert_link(restore)
 
 
-def _rendered_width(text: str, fontname: str, size: float) -> float:
-    """Actual rendered width of one line of `text`, measured by the real renderer.
+def _fit_textbox(width: float, height: float, text: str, fontname: str, max_size: float) -> float:
+    """Largest size <= max_size (floor 4.0) at which `text` fits a width x height box.
 
-    fitz.Font.text_length under-measures Latin glyphs in the built-in CJK font by
-    ~30% (it reports a width far smaller than what insert_text actually draws), so
-    mixed Chinese/Latin lines overflowed the column. Rendering to a scratch page
-    and reading the span bbox gives the true width.
+    Measured with the real renderer (insert_textbox on a scratch page), which
+    handles wrapping and mixed CJK/Latin widths correctly. One size for the whole
+    block keeps the font consistent within a paragraph.
     """
-    doc = fitz.open()
+    box_w = max(width, 1.0)
+    box_h = max(height, 1.0) + 2.0
+    rect = fitz.Rect(0, 0, box_w, box_h)
+    scratch = fitz.open()
     try:
-        page = doc.new_page(width=10000, height=200)
-        page.insert_text((0, 100), text, fontsize=size, fontname=fontname)
-        data = page.get_text("dict")
-        rights = [
-            span["bbox"][2]
-            for block in data.get("blocks", []) if block.get("type") == 0
-            for line in block["lines"]
-            for span in line["spans"]
-        ]
-        return max(rights) if rights else 0.0
+        size = max_size
+        while size >= _MIN_SIZE:
+            sp = scratch.new_page(width=box_w + 4, height=box_h + 10)
+            leftover = sp.insert_textbox(rect, text, fontsize=size, fontname=fontname)
+            if leftover >= 0:  # whole text fit at this size
+                return size
+            size -= 0.5
+        return _MIN_SIZE
     finally:
-        doc.close()
-
-
-_MIN_SIZE = 4.0
-
-
-def _ideal_width_size(width: float, text: str, fontname: str, max_size: float) -> float:
-    """Font size (unclamped) at which `text`'s rendered width equals `width`.
-
-    Returns max_size when the text already fits. May return a value below the
-    readable floor, which the caller uses to decide between single-line placement
-    and wrapping. Width scales linearly with size, so measure once and scale.
-    """
-    rendered = _rendered_width(text, fontname, max_size)
-    if rendered <= width or rendered <= 0:
-        return max_size
-    return max_size * width / rendered
-
-
-def _fit_fontsize(width: float, height: float, text: str, fontname: str, max_size: float) -> float:
-    """Largest size <= max_size (floor 4.0) at which `text`'s rendered width fits `width`.
-
-    `height` is accepted for signature compatibility; single-line placement is
-    constrained by width.
-    """
-    return max(_ideal_width_size(width, text, fontname, max_size), _MIN_SIZE)
+        scratch.close()
 
 
 def insert_translations(page, units: list[TextUnit], translations: list[str], fontname: str) -> None:
@@ -94,19 +97,11 @@ def insert_translations(page, units: list[TextUnit], translations: list[str], fo
         if not text.strip():
             continue
         x0, y0, x1, y1 = u.bbox
-        width = x1 - x0
-        height = y1 - y0
+        size = _fit_textbox(x1 - x0, y1 - y0, text, fontname, u.size)
         color = fitz.sRGB_to_pdf(u.color)
-        ideal = _ideal_width_size(width, text, fontname, u.size)
-        if ideal >= _MIN_SIZE:
-            # Fits on one line at a readable size: place exactly at the baseline.
-            size = min(ideal, u.size)
-            y_baseline = y0 + (height - size) * 0.5 + size * 0.75
-            page.insert_text((x0, y_baseline), text, fontsize=size, fontname=fontname, color=color)
-        else:
-            # Too long for one line even at the floor size: wrap within the box so
-            # it can never run off the page (may clip vertically in extreme cases).
-            page.insert_textbox(
-                fitz.Rect(x0, y0, x1, y1 + 2), text,
-                fontsize=_MIN_SIZE, fontname=fontname, color=color, align=0,
-            )
+        # Reflow the whole paragraph into its block at one size — consistent
+        # sizing, and confined to the block width so it never overflows the page.
+        page.insert_textbox(
+            fitz.Rect(x0, y0, x1, y1 + 2), text,
+            fontsize=size, fontname=fontname, color=color, align=0,
+        )

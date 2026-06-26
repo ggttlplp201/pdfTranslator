@@ -60,10 +60,11 @@ def test_links_preserved_after_redaction(tmp_path):
     assert links[0]["uri"] == "https://example.com"
 
 
-def test_fit_fontsize_shrinks_long_text():
-    big = layout._fit_fontsize(width=200, height=14, text="short", fontname="helv", max_size=12)
-    small = layout._fit_fontsize(
-        width=40, height=14, text="a very long line that will not fit", fontname="helv", max_size=12
+def test_fit_textbox_shrinks_long_text():
+    big = layout._fit_textbox(width=200, height=20, text="short", fontname="helv", max_size=12)
+    small = layout._fit_textbox(
+        width=40, height=14, text="a very long paragraph that will not fit on one short line",
+        fontname="helv", max_size=12,
     )
     assert big == 12
     assert small < 12
