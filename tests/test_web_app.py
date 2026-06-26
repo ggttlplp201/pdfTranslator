@@ -460,3 +460,36 @@ def test_translate_warns_without_file():
     js = client.get("/static/app.js").text
     # clicking Translate with no file selected shows a warning instead of silently doing nothing
     assert "Please choose a PDF first" in js
+
+
+def test_history_is_private_per_user(fake_google):
+    """Two browsers on the same server must not see each other's jobs."""
+    app = create_app()
+    a = TestClient(app)   # user A (own cookie jar / session)
+    b = TestClient(app)   # user B (different session)
+
+    job_id = a.post(
+        "/api/translate",
+        files={"file": ("a.pdf", _pdf_bytes("secret"), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    _wait(a, job_id)
+
+    # A sees and can open its own job
+    assert any(j["id"] == job_id for j in a.get("/api/jobs").json())
+    assert a.get(f"/api/jobs/{job_id}").status_code == 200
+
+    # B sees an empty history and cannot reach A's job by any route
+    assert b.get("/api/jobs").json() == []
+    assert b.get(f"/api/jobs/{job_id}").status_code == 404
+    assert b.get(f"/api/jobs/{job_id}/result").status_code == 404
+    assert b.get(f"/api/jobs/{job_id}/original").status_code == 404
+    assert b.get(f"/api/jobs/{job_id}/page/result/0").status_code == 404
+    assert b.get(f"/api/jobs/{job_id}/text").status_code == 404
+
+
+def test_session_cookie_issued():
+    client = TestClient(create_app())
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "pdftx_sid" in resp.headers.get("set-cookie", "")

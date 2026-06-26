@@ -27,6 +27,7 @@ class Job:
     status: str = "running"
     page: int = 0
     error: Optional[str] = None
+    owner: str = ""  # anonymous per-browser session id; isolates one user's history
     thread: Optional[threading.Thread] = field(default=None, repr=False, compare=False)
 
 
@@ -40,7 +41,7 @@ class JobStore:
 
     def create(self, data: bytes, source: str, target: str, *, engine: str = "google",
                provider: object = None, filename: str = "document.pdf",
-               page_count: int = 0) -> Job:
+               page_count: int = 0, owner: str = "") -> Job:
         job_id = uuid.uuid4().hex
         tmpdir = Path(tempfile.mkdtemp(prefix="pdftr-"))
         input_path = tmpdir / "input.pdf"
@@ -50,7 +51,7 @@ class JobStore:
             id=job_id, source=source, target=target, engine=engine,
             filename=filename, size_bytes=len(data), page_count=page_count,
             input_path=input_path, output_path=output_path, tmpdir=tmpdir,
-            provider=provider, created_at=time.time(),
+            provider=provider, created_at=time.time(), owner=owner,
         )
         with self._lock:
             self._jobs[job_id] = job
@@ -65,9 +66,13 @@ class JobStore:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def list(self) -> list[Job]:
+    def list(self, owner: Optional[str] = None) -> list[Job]:
         with self._lock:
-            return [self._jobs[i] for i in reversed(self._order) if i in self._jobs]
+            jobs = [self._jobs[i] for i in reversed(self._order) if i in self._jobs]
+        # Only return the requesting user's own jobs (history is private per user).
+        if owner is not None:
+            jobs = [j for j in jobs if j.owner == owner]
+        return jobs
 
     def _evict_locked(self) -> None:
         while len(self._order) > self._max_jobs:
