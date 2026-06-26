@@ -1,0 +1,19 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install the package and its dependencies.
+COPY pyproject.toml ./
+COPY src ./src
+RUN pip install --no-cache-dir .
+
+# Public/hosted mode: bring-your-own-key only — keys are sent per request and
+# never written to or read from the server. (Override to "0" for a private,
+# single-user deployment where a machine-saved key is acceptable.)
+ENV PDFTRANSLATOR_BYOK_ONLY=1
+
+# Most platforms inject $PORT; default to 8000 locally.
+ENV PORT=8000
+EXPOSE 8000
+
+CMD ["sh", "-c", "uvicorn pdftranslator.web.app:app --host 0.0.0.0 --port ${PORT:-8000}"]

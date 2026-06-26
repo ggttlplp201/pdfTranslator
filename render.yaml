@@ -1,0 +1,15 @@
+# Render.com blueprint — deploy the hosted PDF Translator with one click.
+# In the Render dashboard: New → Blueprint → point at this repo.
+services:
+  - type: web
+    name: pdftranslator
+    runtime: python
+    plan: free
+    buildCommand: pip install .
+    startCommand: uvicorn pdftranslator.web.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # Bring-your-own-key only: never store a key on the server.
+      - key: PDFTRANSLATOR_BYOK_ONLY
+        value: "1"
+      - key: PYTHON_VERSION
+        value: "3.12.4"
