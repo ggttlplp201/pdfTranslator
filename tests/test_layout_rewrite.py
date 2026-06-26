@@ -68,3 +68,33 @@ def test_fit_fontsize_shrinks_long_text():
     assert big == 12
     assert small < 12
     assert small >= 4.0
+
+
+def test_mixed_cjk_latin_does_not_overflow_column():
+    """A long Chinese+Latin translation must stay within the original column width.
+
+    Regression for the built-in CJK font under-measuring Latin glyphs, which let
+    mixed-script lines run off the right edge of the page.
+    """
+    doc = fitz.open()
+    page = doc.new_page()
+    # An English source line occupying a fixed-width column.
+    page.insert_text((72, 100), "For more examples see the docs.", fontsize=10)
+    units = layout.extract_units(page)
+    box_right = units[0].bbox[2]
+
+    long_mixed = "用于纸质的 HTML 和 CSS 发布，请参阅 css4.pub 了解更多信息内容内容内容内容"
+    layout.redact_units(page, units)
+    layout.insert_translations(page, units, [long_mixed], fontname="china-s")
+
+    data = page.get_text("dict")
+    rights = [
+        span["bbox"][2]
+        for block in data["blocks"] if block.get("type") == 0
+        for line in block["lines"]
+        for span in line["spans"] if span["text"].strip()
+    ]
+    assert rights, "no translated text was inserted"
+    # Inserted text must not extend past the original column's right edge.
+    assert max(rights) <= box_right + 2, (max(rights), box_right)
+    doc.close()

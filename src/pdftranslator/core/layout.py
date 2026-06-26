@@ -3,10 +3,6 @@ import fitz
 from .models import TextUnit
 
 
-# Module-level cache for fonts to avoid rebuilding on each call
-_FONT_CACHE = {}
-
-
 def extract_units(page) -> list[TextUnit]:
     units: list[TextUnit] = []
     data = page.get_text("dict")
@@ -24,11 +20,6 @@ def extract_units(page) -> list[TextUnit]:
                 TextUnit(text=text, bbox=tuple(line["bbox"]), size=size, color=color)
             )
     return units
-
-
-def _get_cached_font(fontname: str) -> fitz.Font:
-    """Get or create a font from the cache."""
-    return _FONT_CACHE.setdefault(fontname, fitz.Font(fontname))
 
 
 def redact_units(page, units: list[TextUnit]) -> None:
@@ -49,16 +40,53 @@ def redact_units(page, units: list[TextUnit]) -> None:
                     page.insert_link(restore)
 
 
+def _rendered_width(text: str, fontname: str, size: float) -> float:
+    """Actual rendered width of one line of `text`, measured by the real renderer.
+
+    fitz.Font.text_length under-measures Latin glyphs in the built-in CJK font by
+    ~30% (it reports a width far smaller than what insert_text actually draws), so
+    mixed Chinese/Latin lines overflowed the column. Rendering to a scratch page
+    and reading the span bbox gives the true width.
+    """
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=10000, height=200)
+        page.insert_text((0, 100), text, fontsize=size, fontname=fontname)
+        data = page.get_text("dict")
+        rights = [
+            span["bbox"][2]
+            for block in data.get("blocks", []) if block.get("type") == 0
+            for line in block["lines"]
+            for span in line["spans"]
+        ]
+        return max(rights) if rights else 0.0
+    finally:
+        doc.close()
+
+
+_MIN_SIZE = 4.0
+
+
+def _ideal_width_size(width: float, text: str, fontname: str, max_size: float) -> float:
+    """Font size (unclamped) at which `text`'s rendered width equals `width`.
+
+    Returns max_size when the text already fits. May return a value below the
+    readable floor, which the caller uses to decide between single-line placement
+    and wrapping. Width scales linearly with size, so measure once and scale.
+    """
+    rendered = _rendered_width(text, fontname, max_size)
+    if rendered <= width or rendered <= 0:
+        return max_size
+    return max_size * width / rendered
+
+
 def _fit_fontsize(width: float, height: float, text: str, fontname: str, max_size: float) -> float:
-    font = _get_cached_font(fontname)
-    size = max_size
-    while size >= 4.0:
-        text_width = font.text_length(text, fontsize=size)
-        # Check if text fits within both width and height constraints
-        if text_width <= width and size <= height:
-            return size
-        size -= 0.5
-    return 4.0
+    """Largest size <= max_size (floor 4.0) at which `text`'s rendered width fits `width`.
+
+    `height` is accepted for signature compatibility; single-line placement is
+    constrained by width.
+    """
+    return max(_ideal_width_size(width, text, fontname, max_size), _MIN_SIZE)
 
 
 def insert_translations(page, units: list[TextUnit], translations: list[str], fontname: str) -> None:
@@ -68,9 +96,17 @@ def insert_translations(page, units: list[TextUnit], translations: list[str], fo
         x0, y0, x1, y1 = u.bbox
         width = x1 - x0
         height = y1 - y0
-        size = _fit_fontsize(width, height, text, fontname, u.size)
         color = fitz.sRGB_to_pdf(u.color)
-        # Position text vertically centered in the bbox
-        # insert_text uses top-left as reference, so we offset by the font height
-        y_offset = y0 + (height - size) * 0.5 + size * 0.75
-        page.insert_text((x0, y_offset), text, fontsize=size, fontname=fontname, color=color)
+        ideal = _ideal_width_size(width, text, fontname, u.size)
+        if ideal >= _MIN_SIZE:
+            # Fits on one line at a readable size: place exactly at the baseline.
+            size = min(ideal, u.size)
+            y_baseline = y0 + (height - size) * 0.5 + size * 0.75
+            page.insert_text((x0, y_baseline), text, fontsize=size, fontname=fontname, color=color)
+        else:
+            # Too long for one line even at the floor size: wrap within the box so
+            # it can never run off the page (may clip vertically in extreme cases).
+            page.insert_textbox(
+                fitz.Rect(x0, y0, x1, y1 + 2), text,
+                fontsize=_MIN_SIZE, fontname=fontname, color=color, align=0,
+            )
