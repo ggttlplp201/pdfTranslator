@@ -222,7 +222,9 @@ async function refreshHistory() {
     const li = document.createElement("li");
     const btn = document.createElement("button");
     btn.className = "historyitem";
-    btn.textContent = `${j.filename} · ${(j.source || "auto").toUpperCase()}→${(j.target || "").toUpperCase()} · ${j.status}`;
+    const engineLabel = { google: "Google", claude: "Claude", openai: "OpenAI" }[j.engine] || j.engine || "";
+    const langs = `${(j.source || "auto").toUpperCase()}→${(j.target || "").toUpperCase()}`;
+    btn.textContent = `${j.filename} · ${langs} · ${engineLabel} · ${j.status}`;
     btn.addEventListener("click", () => openHistory(j.id));
     li.appendChild(btn);
     list.appendChild(li);

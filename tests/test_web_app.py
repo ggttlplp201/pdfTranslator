@@ -298,7 +298,9 @@ def test_jobs_list_and_text(fake_google):
     _wait(client, job_id)
 
     listing = client.get("/api/jobs").json()
-    assert any(j["id"] == job_id and j["filename"] == "doc.pdf" for j in listing)
+    entry = next(j for j in listing if j["id"] == job_id)
+    assert entry["filename"] == "doc.pdf"
+    assert entry["engine"] == "google"  # history shows which engine was used
 
     status = client.get(f"/api/jobs/{job_id}").json()
     assert status["filename"] == "doc.pdf"

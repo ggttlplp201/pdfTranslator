@@ -162,6 +162,7 @@ def create_app(store: JobStore | None = None) -> FastAPI:
                 "filename": j.filename,
                 "source": j.source,
                 "target": j.target,
+                "engine": j.engine,
                 "status": j.status,
                 "page_count": j.page_count,
                 "created_at": j.created_at,
