@@ -123,22 +123,37 @@ def _dominant_style(spans) -> tuple[bool, bool]:
     return bold / total >= 0.6, italic / total >= 0.6
 
 
-def redact_units(page, units: list[TextUnit]) -> None:
+def _redact_rects(page, rects: list) -> None:
+    if not rects:
+        return
     # Capture existing links before redaction: apply_redactions deletes any link
     # annotation whose rectangle overlaps a redacted area.
     links_before = page.get_links()
-    for u in units:
-        page.add_redact_annot(fitz.Rect(u.bbox))
-    if units:
-        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
-        # Restore links that were deleted. Links that did NOT overlap survive on
-        # their own, so we compare by xref to avoid creating duplicates.
-        if links_before:
-            after_xrefs = {lnk["xref"] for lnk in page.get_links()}
-            for lnk in links_before:
-                if lnk["xref"] not in after_xrefs:
-                    restore = {k: v for k, v in lnk.items() if k not in ("xref", "id")}
-                    page.insert_link(restore)
+    for r in rects:
+        page.add_redact_annot(fitz.Rect(r))
+    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+    # Restore links that were deleted. Links that did NOT overlap survive on
+    # their own, so we compare by xref to avoid creating duplicates.
+    if links_before:
+        after_xrefs = {lnk["xref"] for lnk in page.get_links()}
+        for lnk in links_before:
+            if lnk["xref"] not in after_xrefs:
+                restore = {k: v for k, v in lnk.items() if k not in ("xref", "id")}
+                page.insert_link(restore)
+
+
+def redact_units(page, units: list[TextUnit]) -> None:
+    _redact_rects(page, [u.bbox for u in units])
+
+
+def redact_blocks(page) -> None:
+    """Redact every original text block on the page (keeping images and links).
+
+    Used by the OCR path to clear a broken/mojibake text layer before laying the
+    OCR-recovered translation over the untouched background.
+    """
+    rects = [b["bbox"] for b in page.get_text("dict").get("blocks", []) if b.get("type") == 0]
+    _redact_rects(page, rects)
 
 
 def _fit_textbox(width: float, height: float, text: str, fontname: str, max_size: float,

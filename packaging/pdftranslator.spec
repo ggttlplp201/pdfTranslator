@@ -24,7 +24,9 @@ datas += collect_data_files("fitz")  # PyMuPDF runtime resources
 # analysis misses these, so name them explicitly. (openai's submodules include
 # an optional voice helper that needs numpy, so we don't sweep them wholesale —
 # the import graph from `import openai` already pulls in the client we use.)
-hiddenimports = collect_submodules("uvicorn") + ["anthropic", "openai"]
+# pytesseract/PIL power the optional OCR fallback (no-ops if the tesseract
+# binary isn't present, e.g. in the desktop build).
+hiddenimports = collect_submodules("uvicorn") + ["anthropic", "openai", "pytesseract", "PIL"]
 
 a = Analysis(
     [os.path.join(SPECPATH, "desktop_entry.py")],

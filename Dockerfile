@@ -1,5 +1,11 @@
 FROM python:3.12-slim
 
+# Tesseract OCR (+ English / Simplified Chinese / Portuguese data) for the
+# fallback that handles broken-text-layer and scanned PDFs.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim tesseract-ocr-por \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Install the package and its dependencies.

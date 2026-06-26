@@ -16,6 +16,8 @@ dependencies = [
     "python-multipart>=0.0.9",
     "anthropic>=0.40",
     "openai>=1.40",
+    "pytesseract>=0.3.10",
+    "pillow>=10.0",
 ]
 
 [project.optional-dependencies]
