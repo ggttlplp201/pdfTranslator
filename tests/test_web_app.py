@@ -345,3 +345,17 @@ def test_translate_defaults_to_google(fake_google):
     job_id = r.json()["job_id"]
     _wait(client, job_id)
     assert client.get(f"/api/jobs/{job_id}").json()["engine"] == "google"
+
+
+def test_redesign_structure_present():
+    client = TestClient(create_app())
+    html = client.get("/").text
+    for hook in (
+        'id="dropzone"', 'id="from"', 'id="to"', 'id="engine"', 'id="swapBtn"',
+        'id="translateBtn"', 'id="origView"', 'id="transView"', 'id="historyBtn"',
+        'id="statusBar"', 'id="apiKey"',
+    ):
+        assert hook in html, hook
+    # design tokens / fonts wired
+    assert "#1B66C9" in html or "1B66C9" in client.get("/static/styles.css").text
+    assert "Hanken Grotesk" in client.get("/static/styles.css").text

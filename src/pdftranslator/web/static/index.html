@@ -1,56 +1,229 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PDF Translator</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-  </head>
-  <body>
-    <header><h1>PDF Translator</h1></header>
-    <main>
-      <section class="controls">
-        <div id="dropzone" class="dropzone">
-          <p>Drag &amp; drop a PDF here, or <span class="link">browse</span></p>
-          <p id="filename" class="filename"></p>
-          <input id="fileInput" type="file" accept="application/pdf" hidden />
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PDF Translator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+  <!-- History panel (hidden by default) -->
+  <aside id="historyPanel" class="history-panel hidden">
+    <div class="history-header">
+      <span class="history-title">Translation History</span>
+    </div>
+    <ul id="historyList" class="history-list"></ul>
+  </aside>
+
+  <div class="page-wrap">
+    <main class="main-col">
+
+      <!-- Header row -->
+      <header class="app-header">
+        <div class="wordmark">
+          <div class="wordmark-icon">文</div>
+          <span class="wordmark-text">PDF Translator</span>
         </div>
-        <div class="langs">
-          <label>From
-            <select id="from">
-              <option value="auto" selected>Auto-detect</option>
+        <button id="historyBtn" class="btn-ghost">
+          <!-- clock-history icon -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 3v5h5"/>
+            <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
+            <path d="M12 7v5l3 2"/>
+          </svg>
+          History
+        </button>
+      </header>
+
+      <!-- Dropzone -->
+      <div id="dropzone" class="dropzone">
+        <div class="dropzone-icon">
+          <!-- upload-arrow icon -->
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v12"/>
+            <path d="m7 8 5-5 5 5"/>
+            <path d="M5 21h14"/>
+          </svg>
+        </div>
+        <div class="dropzone-lead">Drag &amp; drop a PDF here, or <span class="browse-link">browse</span></div>
+        <div id="fileMeta" class="dropzone-meta hidden">
+          <!-- file icon -->
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <path d="M14 2v6h6"/>
+          </svg>
+          <span id="fileMetaName"></span>
+          <span class="meta-sep">·</span>
+          <span id="fileMetaInfo"></span>
+        </div>
+        <input id="fileInput" type="file" accept="application/pdf" hidden />
+      </div>
+
+      <!-- Controls row -->
+      <div class="controls-row">
+
+        <!-- From select -->
+        <div class="select-wrap">
+          <label class="select-label" for="from">From</label>
+          <div class="select-inner">
+            <select id="from" class="select-nq">
+              <option value="auto">Auto-detect</option>
               <option value="en">English</option>
-              <option value="pt">Portuguese</option>
               <option value="zh">Chinese (Simplified)</option>
+              <option value="pt">Portuguese</option>
             </select>
-          </label>
-          <label>To
-            <select id="to">
-              <option value="zh" selected>Chinese (Simplified)</option>
+            <!-- chevron-down icon -->
+            <svg class="chevron-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m6 9 6 6 6-6"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Swap button -->
+        <button id="swapBtn" class="btn-swap" aria-label="Swap languages">
+          <!-- swap / two-arrows icon -->
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="swap-icon" aria-hidden="true">
+            <path d="m17 3 4 4-4 4"/>
+            <path d="M21 7H7"/>
+            <path d="m7 21-4-4 4-4"/>
+            <path d="M3 17h14"/>
+          </svg>
+        </button>
+
+        <!-- To select -->
+        <div class="select-wrap">
+          <label class="select-label" for="to">To</label>
+          <div class="select-inner">
+            <select id="to" class="select-nq">
+              <option value="zh">Chinese (Simplified)</option>
               <option value="en">English</option>
               <option value="pt">Portuguese</option>
             </select>
-          </label>
-          <button id="translateBtn" disabled>Translate</button>
+            <!-- chevron-down icon -->
+            <svg class="chevron-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m6 9 6 6 6-6"/>
+            </svg>
+          </div>
         </div>
-        <div id="error" class="error hidden"></div>
-        <div id="progressWrap" class="progress-wrap hidden">
-          <div id="progressBar" class="progress-bar"></div>
+
+        <!-- Engine select -->
+        <div class="select-wrap">
+          <label class="select-label" for="engine">Engine</label>
+          <div class="select-inner">
+            <select id="engine" class="select-nq">
+              <option value="google">Google Translate</option>
+              <option value="claude">Claude</option>
+              <option value="openai">OpenAI</option>
+            </select>
+            <!-- chevron-down icon -->
+            <svg class="chevron-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m6 9 6 6 6-6"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- API key (hidden until LLM engine selected) -->
+        <div id="apiKeyWrap" class="api-key-wrap hidden">
+          <label class="select-label" for="apiKey">API Key</label>
+          <div class="api-key-inner">
+            <input id="apiKey" type="text" class="api-key-input" placeholder="Paste your API key…" autocomplete="off" />
+            <button id="saveKeyBtn" class="btn-save-key">Save</button>
+          </div>
+        </div>
+
+        <!-- Translate button -->
+        <button id="translateBtn" class="btn-translate">
+          Translate
+          <!-- arrow-right icon -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14"/>
+            <path d="m12 5 7 7-7 7"/>
+          </svg>
+        </button>
+
+      </div><!-- /controls-row -->
+
+      <!-- Status bar -->
+      <div id="statusBar" class="status-bar">
+
+        <!-- Idle state -->
+        <div id="statusIdle" class="status-child status-idle">
+          <span class="status-ready-dot" aria-hidden="true"></span>
+          <span>Ready to translate</span>
+        </div>
+
+        <!-- Progress state -->
+        <div id="statusProgress" class="status-child status-progress hidden">
           <span id="progressText" class="progress-text"></span>
+          <div id="progressBar" class="progress-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar-fill"></div>
+          </div>
         </div>
-      </section>
-      <section class="previews">
+
+        <!-- Done state -->
+        <div id="statusDone" class="status-child status-done hidden">
+          <div class="status-done-left">
+            <span class="status-check-badge" aria-hidden="true">
+              <!-- checkmark icon -->
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+            </span>
+            <span class="status-done-label">Translation complete</span>
+          </div>
+          <button id="downloadBtn" class="btn-download">
+            <!-- download icon -->
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <path d="M7 10l5 5 5-5"/>
+              <path d="M12 15V3"/>
+            </svg>
+            Download translated PDF
+          </button>
+        </div>
+
+        <!-- Error state -->
+        <div id="statusError" class="status-child status-error hidden">
+          <span id="errorText" class="error-text"></span>
+          <button id="retryBtn" class="btn-retry">Retry</button>
+        </div>
+
+      </div><!-- /statusBar -->
+
+      <!-- Panes -->
+      <div class="panes-row">
+
+        <!-- Original pane -->
         <div class="pane">
-          <h2>Original</h2>
-          <div id="origView" class="pdfview" aria-label="Original preview"></div>
+          <div class="pane-label-row">
+            <span class="pane-label pane-label-orig">ORIGINAL</span>
+            <span id="origBadge" class="pane-badge pane-badge-orig">EN</span>
+          </div>
+          <div class="pane-card pane-card-orig">
+            <div id="origView" class="scrollpane pane-body pane-orig"></div>
+          </div>
         </div>
+
+        <!-- Translated pane -->
         <div class="pane">
-          <h2>Translated</h2>
-          <div id="transView" class="pdfview" aria-label="Translated preview"></div>
-          <a id="download" class="download hidden" download="translated.pdf">Download</a>
+          <div class="pane-label-row">
+            <span class="pane-label pane-label-trans">TRANSLATED</span>
+            <span id="transBadge" class="pane-badge pane-badge-trans">ZH</span>
+          </div>
+          <div class="pane-card pane-card-trans">
+            <div id="transView" class="scrollpane pane-body pane-trans"></div>
+          </div>
         </div>
-      </section>
+
+      </div><!-- /panes-row -->
+
     </main>
-    <script src="/static/app.js"></script>
-  </body>
+  </div><!-- /page-wrap -->
+
+  <script src="/static/app.js"></script>
+</body>
 </html>
