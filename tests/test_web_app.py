@@ -269,3 +269,54 @@ def test_result_pages_404_while_running(monkeypatch):
         assert client.get(f"/api/jobs/{job_id}/pages?which=original").json()["pages"] == 1
     finally:
         gate.set()
+
+
+def test_settings_get_and_post(tmp_path, monkeypatch):
+    monkeypatch.setenv("PDFTRANSLATOR_CONFIG_DIR", str(tmp_path))
+    client = TestClient(create_app())
+    assert client.get("/api/settings").json() == {"claude": False, "openai": False}
+    r = client.post("/api/settings", data={"engine": "claude", "api_key": "sk-x"})
+    assert r.status_code == 200
+    assert client.get("/api/settings").json()["claude"] is True
+    # the key value is never returned
+    assert "sk-x" not in client.get("/api/settings").text
+
+
+def test_settings_bad_engine_400(tmp_path, monkeypatch):
+    monkeypatch.setenv("PDFTRANSLATOR_CONFIG_DIR", str(tmp_path))
+    client = TestClient(create_app())
+    assert client.post("/api/settings", data={"engine": "google", "api_key": "x"}).status_code == 400
+
+
+def test_jobs_list_and_text(fake_google):
+    client = TestClient(create_app())
+    job_id = client.post(
+        "/api/translate",
+        files={"file": ("doc.pdf", _pdf_bytes("hello world"), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    _wait(client, job_id)
+
+    listing = client.get("/api/jobs").json()
+    assert any(j["id"] == job_id and j["filename"] == "doc.pdf" for j in listing)
+
+    status = client.get(f"/api/jobs/{job_id}").json()
+    assert status["filename"] == "doc.pdf"
+    assert status["page_count"] >= 1
+    assert status["target"] == "en"
+
+    orig = client.get(f"/api/jobs/{job_id}/text?which=original").json()
+    assert "hello world" in " ".join(orig["pages"]).lower()
+    trans = client.get(f"/api/jobs/{job_id}/text?which=result").json()
+    assert "HELLO" in " ".join(trans["pages"])  # fake provider uppercases
+
+
+def test_text_invalid_which_400(fake_google):
+    client = TestClient(create_app())
+    job_id = client.post(
+        "/api/translate",
+        files={"file": ("doc.pdf", _pdf_bytes(), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    _wait(client, job_id)
+    assert client.get(f"/api/jobs/{job_id}/text?which=nope").status_code == 400

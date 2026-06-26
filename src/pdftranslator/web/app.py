@@ -1,3 +1,4 @@
+import io
 from pathlib import Path
 
 import fitz
@@ -5,11 +6,20 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from ..core import lang
+from . import settings
+from ..core import lang, providers
 from .jobs import JobStore
 
 STATIC_DIR = Path(__file__).parent / "static"
 PREVIEW_DPI = 110
+
+
+def _page_texts(path: Path) -> list[str]:
+    doc = fitz.open(path)
+    try:
+        return [doc[i].get_text("text") for i in range(doc.page_count)]
+    finally:
+        doc.close()
 
 
 def create_app(store: JobStore | None = None) -> FastAPI:
@@ -38,7 +48,13 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         # Magic-byte sniff (not full validation — just rejects obvious non-PDFs)
         if not data.startswith(b"%PDF"):
             raise HTTPException(status_code=400, detail="not a PDF file")
-        job = app.state.store.create(data, source, target)
+        # Calculate page count
+        doc = fitz.open(stream=io.BytesIO(data), filetype="pdf")
+        page_count = doc.page_count
+        doc.close()
+        # Build provider (default to google, which has no key requirement)
+        provider = providers.build_provider("google")
+        job = app.state.store.create(data, source, target, filename=file.filename, page_count=page_count, provider=provider)
         return {"job_id": job.id}
 
     @app.get("/api/jobs/{job_id}")
@@ -51,6 +67,11 @@ def create_app(store: JobStore | None = None) -> FastAPI:
             "page": job.page,
             "page_count": job.page_count,
             "error": job.error,
+            "filename": job.filename,
+            "size_bytes": job.size_bytes,
+            "source": job.source,
+            "target": job.target,
+            "engine": job.engine,
         }
 
     @app.get("/api/jobs/{job_id}/original")
@@ -115,6 +136,48 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         finally:
             doc.close()
         return Response(content=png, media_type="image/png")
+
+    @app.get("/api/jobs")
+    def jobs_list() -> list:
+        return [
+            {
+                "id": j.id,
+                "filename": j.filename,
+                "source": j.source,
+                "target": j.target,
+                "status": j.status,
+                "page_count": j.page_count,
+                "created_at": j.created_at,
+            }
+            for j in app.state.store.list()
+        ]
+
+    @app.get("/api/jobs/{job_id}/text")
+    def job_text(job_id: str, which: str = "result") -> dict:
+        job = app.state.store.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="unknown job")
+        if which == "original":
+            path = job.input_path
+        elif which == "result":
+            if job.status != "done":
+                raise HTTPException(status_code=404, detail="result not ready")
+            path = job.output_path
+        else:
+            raise HTTPException(status_code=400, detail="invalid document")
+        return {"pages": _page_texts(path)}
+
+    @app.get("/api/settings")
+    def get_settings() -> dict:
+        return {"claude": settings.has_key("claude"), "openai": settings.has_key("openai")}
+
+    @app.post("/api/settings")
+    def save_settings(engine: str = Form(...), api_key: str = Form(...)) -> dict:
+        try:
+            settings.set_key(engine, api_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True}
 
     return app
 
