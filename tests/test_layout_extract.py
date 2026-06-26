@@ -57,7 +57,7 @@ def test_numeric_only_blocks_are_left_untouched():
 
     # after the full rewrite the numbers survive verbatim, the text is replaced
     layout.redact_units(page, units)
-    layout.insert_translations(page, units, ["你好世界"], fontname="china-s")
+    layout.insert_translations(page, units, ["你好世界"], "zh")
     after = page.get_text("text")
     assert "42" in after and "40" in after and "60" in after  # numbers untouched
     assert "Hello" not in after                       # text was translated/redacted
@@ -74,3 +74,20 @@ def test_is_noop_translation_keeps_untranslatable_lists():
     assert not layout.is_noop_translation("Hello world friends", "你好世界朋友")
     # Too little content to judge → translate normally.
     assert not layout.is_noop_translation("OMNIA", "OMNIA")
+
+
+def test_extract_detects_bold_and_italic():
+    import fitz
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Bold heading", fontsize=14, fontname="hebo")   # Helvetica-Bold
+    page.insert_text((72, 140), "Italic note", fontsize=12, fontname="heit")    # Helvetica-Oblique
+    page.insert_text((72, 180), "Plain words", fontsize=12, fontname="helv")
+    us = layout.extract_units(page)
+    bold = next(u for u in us if "Bold" in u.text)
+    ital = next(u for u in us if "Italic" in u.text)
+    plain = next(u for u in us if "Plain" in u.text)
+    assert bold.bold and not bold.italic
+    assert ital.italic and not ital.bold
+    assert not plain.bold and not plain.italic
+    doc.close()

@@ -7,3 +7,5 @@ class TextUnit:
     bbox: tuple[float, float, float, float]
     size: float
     color: int
+    bold: bool = False
+    italic: bool = False

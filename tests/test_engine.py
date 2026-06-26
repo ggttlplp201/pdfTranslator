@@ -88,3 +88,25 @@ def test_output_embeds_real_font_and_keeps_trademark(tmp_path):
     result.close()
     assert any("Noto" in f for f in fonts_used), fonts_used  # embedded real font
     assert "®" in text  # trademark glyph preserved (china-s would drop it)
+
+
+def test_bold_block_renders_with_bold_font(tmp_path):
+    """A bold source heading should be rendered with the bold font variant."""
+    import fitz
+
+    class Fake:
+        def translate(self, texts, source, target):
+            return ["粗体标题文字内容" for _ in texts]
+
+    src = tmp_path / "in.pdf"
+    out = tmp_path / "out.pdf"
+    doc = fitz.open()
+    doc.new_page().insert_text((72, 72), "Bold Heading Text", fontsize=16, fontname="hebo")
+    doc.save(str(src)); doc.close()
+
+    engine.translate_pdf(str(src), str(out), source="auto", target="zh", provider=Fake())
+
+    result = fitz.open(str(out))
+    fonts_used = [f[3] for f in result.get_page_fonts(0)]
+    result.close()
+    assert any("Bold" in f for f in fonts_used), fonts_used

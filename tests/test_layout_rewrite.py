@@ -18,7 +18,7 @@ def test_rewrite_replaces_text_and_keeps_image():
 
     units = layout.extract_units(page)
     layout.redact_units(page, units)
-    layout.insert_translations(page, units, ["Olá mundo"], fontname="helv")
+    layout.insert_translations(page, units, ["Olá mundo"], "en")
 
     text_after = page.get_text("text")
     assert "Hello" not in text_after
@@ -46,7 +46,7 @@ def test_links_preserved_after_redaction(tmp_path):
     page = doc[0]
     units = layout.extract_units(page)
     layout.redact_units(page, units)
-    layout.insert_translations(page, units, ["Visit site"], fontname="helv")
+    layout.insert_translations(page, units, ["Visit site"], "en")
 
     out = tmp_path / "out.pdf"
     doc.save(str(out))
@@ -91,7 +91,7 @@ def test_mixed_cjk_latin_does_not_overflow_into_neighbor():
 
     long_mixed = "用于纸质的 HTML 和 CSS 发布，请参阅 css4.pub 了解更多信息内容内容内容内容"
     layout.redact_units(page, units)
-    layout.insert_translations(page, units + [neighbor], [long_mixed, "x"], fontname="china-s")
+    layout.insert_translations(page, units + [neighbor], [long_mixed, "x"], "zh")
 
     data = page.get_text("dict")
     rights = [
@@ -114,7 +114,7 @@ def test_short_label_recovers_readable_size():
     doc = fitz.open()
     page = doc.new_page()  # 612 x 792, lots of empty space to the right
     u = TextUnit(text="CRI: 83", bbox=(60, 100, 96, 112), size=9.0, color=0)
-    layout.insert_translations(page, [u], ["显色指数：83"], fontname="china-s")
+    layout.insert_translations(page, [u], ["显色指数：83"], "zh")
     spans = [
         s for b in page.get_text("dict")["blocks"] if b.get("type") == 0
         for l in b["lines"] for s in l["spans"] if s["text"].strip()
@@ -133,7 +133,7 @@ def test_growth_bounded_by_right_neighbor():
     short = TextUnit(text="CRI: 83", bbox=(60, 100, 96, 112), size=9.0, color=0)
     neighbor = TextUnit(text="x", bbox=(120, 100, 200, 112), size=9.0, color=0)
     layout.insert_translations(
-        page, [short, neighbor], ["显色指数显色指数显色指数", "y"], fontname="china-s"
+        page, [short, neighbor], ["显色指数显色指数显色指数", "y"], "zh"
     )
     invaders = [
         s for b in page.get_text("dict")["blocks"] if b.get("type") == 0

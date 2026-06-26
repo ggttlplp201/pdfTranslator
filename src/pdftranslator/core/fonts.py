@@ -9,12 +9,8 @@ and cover ® / © / ™.
 import sys
 from pathlib import Path
 
-# (registration name, file name) per language.
-_FONTS = {
-    "zh": ("NotoSansSC", "NotoSansSC-Regular.ttf"),
-    "en": ("NotoSans", "NotoSans-Regular.ttf"),
-    "pt": ("NotoSans", "NotoSans-Regular.ttf"),
-}
+# Font family per language.
+_FAMILY = {"zh": "NotoSansSC", "en": "NotoSans", "pt": "NotoSans"}
 
 
 def _fonts_dir() -> Path:
@@ -25,7 +21,28 @@ def _fonts_dir() -> Path:
     return Path(__file__).parent.parent / "assets" / "fonts"
 
 
-def font_for_language(target: str) -> tuple[str, str]:
-    """Return (fontname, fontfile_path) for the target language."""
-    name, fname = _FONTS.get(target, _FONTS["en"])
+def _suffix(family: str, bold: bool, italic: bool) -> str:
+    if family == "NotoSansSC":
+        # The CJK family ships Regular + Bold only (CJK has no italic form).
+        return "-Bold" if bold else "-Regular"
+    if bold and italic:
+        return "-BoldItalic"
+    if bold:
+        return "-Bold"
+    if italic:
+        return "-Italic"
+    return "-Regular"
+
+
+def font_variant(target: str, bold: bool = False, italic: bool = False) -> tuple[str, str]:
+    """Return (registration_name, fontfile_path) for a language + style."""
+    family = _FAMILY.get(target, "NotoSans")
+    suffix = _suffix(family, bold, italic)
+    name = (family + suffix).replace("-", "")   # e.g. NotoSansSCBold
+    fname = f"{family}{suffix}.ttf"
     return name, str(_fonts_dir() / fname)
+
+
+def font_for_language(target: str) -> tuple[str, str]:
+    """Return the Regular (name, fontfile) for the target language."""
+    return font_variant(target, bold=False, italic=False)

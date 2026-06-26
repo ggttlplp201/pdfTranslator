@@ -2,6 +2,7 @@ import re
 
 import fitz
 
+from . import fonts
 from .models import TextUnit
 
 _MIN_SIZE = 4.0
@@ -79,8 +80,47 @@ def extract_units(page) -> list[TextUnit]:
         spans = [s for line in block.get("lines", []) for s in line.get("spans", [])]
         size = max((s.get("size", 10.0) for s in spans), default=10.0)
         color = spans[0].get("color", 0) if spans else 0
-        units.append(TextUnit(text=text, bbox=tuple(block["bbox"]), size=size, color=color))
+        bold, italic = _dominant_style(spans)
+        units.append(TextUnit(
+            text=text, bbox=tuple(block["bbox"]), size=size, color=color,
+            bold=bold, italic=italic,
+        ))
     return units
+
+
+# PyMuPDF span "flags" bits: 2 = italic, 16 = bold.
+_FLAG_ITALIC = 2
+_FLAG_BOLD = 16
+_BOLD_NAMES = ("bold", "black", "heavy", "semibold", "demibold")
+_ITALIC_NAMES = ("italic", "oblique")
+
+
+def _span_is(span, flag: int, names: tuple) -> bool:
+    if span.get("flags", 0) & flag:
+        return True
+    font = span.get("font", "").lower()
+    return any(n in font for n in names)
+
+
+def _dominant_style(spans) -> tuple[bool, bool]:
+    """A block is bold/italic if most of its (non-space) characters are.
+
+    Block-level because we translate whole paragraphs and can't map translated
+    words back to individual spans — so we apply one consistent style per block.
+    """
+    total = bold = italic = 0
+    for s in spans:
+        n = len(s.get("text", "").strip())
+        if not n:
+            continue
+        total += n
+        if _span_is(s, _FLAG_BOLD, _BOLD_NAMES):
+            bold += n
+        if _span_is(s, _FLAG_ITALIC, _ITALIC_NAMES):
+            italic += n
+    if not total:
+        return False, False
+    return bold / total >= 0.6, italic / total >= 0.6
 
 
 def redact_units(page, units: list[TextUnit]) -> None:
@@ -162,16 +202,22 @@ def _grow_bounds(u: TextUnit, units: list[TextUnit], page_rect) -> tuple:
     return x0, y0, max(x1, right_limit), max(y1, bottom_limit)
 
 
-def insert_translations(page, units: list[TextUnit], translations: list[str], fontname: str,
-                        fontfile: str | None = None) -> None:
+def insert_translations(page, units: list[TextUnit], translations: list[str], target: str) -> None:
     page_rect = page.rect
-    # Register the bundled font on the page once so every block embeds (and later
-    # subsets) the same real font instead of a built-in alias.
-    if fontfile:
-        page.insert_font(fontname=fontname, fontfile=fontfile)
+    registered: set[str] = set()
+
+    def _register(name: str, fontfile: str) -> None:
+        if name not in registered:
+            page.insert_font(fontname=name, fontfile=fontfile)
+            registered.add(name)
+
     for u, text in zip(units, translations):
         if not text.strip():
             continue
+        # Pick the embedded font variant matching the block's dominant style so a
+        # bold heading stays bold, an italic note stays italic.
+        fontname, fontfile = fonts.font_variant(target, u.bold, u.italic)
+        _register(fontname, fontfile)
         x0, y0, x1, y1 = u.bbox
         size = _fit_textbox(x1 - x0, y1 - y0, text, fontname, u.size, fontfile)
         # If the translation only fits at an unreadably small size (it's wider
