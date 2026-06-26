@@ -98,7 +98,8 @@ class _LLMProvider:
         "translation of that line. Output only these marked lines, in order — no JSON, no "
         "commentary, no code fences. Translate every line (including headings, table cells "
         "and fragments); never leave the original {source} text except for numbers, "
-        "symbols, or code."
+        "symbols, or code. Keep any placeholder token like {{0}} or {{12}} exactly as it "
+        "appears — do not translate, alter, space, or drop it."
     )
     _MARK = re.compile(r"\s*<<<(\d+)>>>[ \t]?(.*)")
 

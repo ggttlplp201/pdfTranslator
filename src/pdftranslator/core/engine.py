@@ -1,6 +1,6 @@
 import fitz
 
-from . import fonts, lang, layout
+from . import fonts, lang, layout, terminology
 
 
 def translate_pdf(input_path, output_path, source, target, provider, progress=None) -> None:
@@ -14,7 +14,15 @@ def translate_pdf(input_path, output_path, source, target, provider, progress=No
         for index, page in enumerate(doc):
             units = layout.extract_units(page)
             if units:
-                translations = provider.translate([u.text for u in units], source, target)
+                # Mask brand names / codes / IDs so the translator can't mangle
+                # them, then restore them verbatim in the result.
+                masked, masks = [], []
+                for u in units:
+                    m, terms = terminology.protect(u.text)
+                    masked.append(m)
+                    masks.append(terms)
+                raw = provider.translate(masked, source, target)
+                translations = [terminology.restore(t, terms) for t, terms in zip(raw, masks)]
                 # Skip blocks the translator barely changed (product codes, brand
                 # names): leaving the original preserves its exact format and any
                 # special glyphs (®, ©, ™) the replacement font can't render.
