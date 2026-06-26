@@ -56,7 +56,11 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         job = app.state.store.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="unknown job")
-        return FileResponse(job.input_path, media_type="application/pdf", filename="original.pdf")
+        # Inline so the browser renders it in the preview iframe (not download).
+        return FileResponse(
+            job.input_path, media_type="application/pdf",
+            filename="original.pdf", content_disposition_type="inline",
+        )
 
     @app.get("/api/jobs/{job_id}/result")
     def job_result(job_id: str):
@@ -65,7 +69,12 @@ def create_app(store: JobStore | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="unknown job")
         if job.status != "done":
             raise HTTPException(status_code=404, detail="result not ready")
-        return FileResponse(job.output_path, media_type="application/pdf", filename="translated.pdf")
+        # Inline so it renders in the preview iframe; the Download button's
+        # anchor carries `download`, which forces a save when clicked.
+        return FileResponse(
+            job.output_path, media_type="application/pdf",
+            filename="translated.pdf", content_disposition_type="inline",
+        )
 
     return app
 

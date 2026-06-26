@@ -192,3 +192,21 @@ def test_app_js_served_with_logic():
     client = TestClient(create_app())
     js = client.get("/static/app.js").text
     assert "/api/translate" in js
+
+
+def test_previews_served_inline_not_attachment(fake_google):
+    # Both PDFs must render in the iframe preview, so they must NOT be sent as
+    # attachments (which makes the browser download instead of display them).
+    client = TestClient(create_app())
+    job_id = client.post(
+        "/api/translate",
+        files={"file": ("in.pdf", _pdf_bytes("hello"), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    _wait(client, job_id)
+    for path in (f"/api/jobs/{job_id}/original", f"/api/jobs/{job_id}/result"):
+        resp = client.get(path)
+        assert resp.status_code == 200
+        disposition = resp.headers.get("content-disposition", "")
+        assert disposition.startswith("inline"), (path, disposition)
+        assert "attachment" not in disposition
