@@ -179,3 +179,46 @@ def test_build_provider_requires_llm_key():
         providers.build_provider("openai", api_key="")
     with pytest.raises(ValueError):
         providers.build_provider("bogus")
+
+
+class FakeOpenAIClient:
+    """Mimics openai.OpenAI: client.chat.completions.create(...).choices[0].message.content"""
+    def __init__(self, texts):
+        self._texts = list(texts)
+        self.calls = []
+        outer = self
+
+        class _Completions:
+            def create(self, model, messages, **kwargs):
+                outer.calls.append(messages)
+                idx = min(len(outer.calls) - 1, len(outer._texts) - 1)
+                content = outer._texts[idx]
+                message = type("Msg", (), {"content": content})()
+                choice = type("Choice", (), {"message": message})()
+                return type("Resp", (), {"choices": [choice]})()
+
+        self.chat = type("Chat", (), {"completions": _Completions()})()
+
+
+def test_openai_batch_returns_translations():
+    # Same line-marker protocol as Claude, through the OpenAI call shape.
+    client = FakeOpenAIClient(["<<<0>>> 你好\n<<<1>>> 世界"])
+    provider = providers.OpenAIProvider(api_key="x", client=client)
+    assert provider.translate(["Hello", "World"], "en", "zh") == ["你好", "世界"]
+    assert len(client.calls) == 1  # one batched call
+
+
+def test_openai_retries_only_missing_indices():
+    client = FakeOpenAIClient(["<<<0>>> A", "<<<1>>> B"])
+    provider = providers.OpenAIProvider(api_key="x", client=client)
+    assert provider.translate(["Hello", "World"], "en", "zh") == ["A", "B"]
+    assert len(client.calls) == 2
+
+
+def test_openai_handles_quotes_in_translation():
+    # The quote-immune protocol must work for OpenAI too (was the page-3 bug).
+    client = FakeOpenAIClient(['<<<0>>> 帕西尼小体："弥散振动"。'])
+    provider = providers.OpenAIProvider(api_key="x", client=client)
+    assert provider.translate(['Pacinian corpuscle: "A diffuse vibration".'], "en", "zh") == [
+        '帕西尼小体："弥散振动"。'
+    ]
