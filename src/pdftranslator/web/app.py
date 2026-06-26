@@ -1,4 +1,5 @@
 import io
+import sys
 from pathlib import Path
 
 import fitz
@@ -10,7 +11,21 @@ from . import settings
 from ..core import lang, providers
 from .jobs import JobStore
 
-STATIC_DIR = Path(__file__).parent / "static"
+
+def _static_dir() -> Path:
+    """Locate the bundled static assets, whether running from source or frozen.
+
+    PyInstaller extracts data files under sys._MEIPASS; when running normally
+    __file__ resolves the package directory. Both place the assets at the same
+    relative path (pdftranslator/web/static).
+    """
+    base = getattr(sys, "_MEIPASS", None)
+    if base is not None:
+        return Path(base) / "pdftranslator" / "web" / "static"
+    return Path(__file__).parent / "static"
+
+
+STATIC_DIR = _static_dir()
 PREVIEW_DPI = 110
 
 
