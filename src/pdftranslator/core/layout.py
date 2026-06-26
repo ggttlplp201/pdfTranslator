@@ -16,6 +16,25 @@ def _has_translatable(text: str) -> bool:
     return bool(_TRANSLATABLE.search(text))
 
 
+_ALNUM = re.compile(r"[A-Za-z0-9]+")
+
+
+def is_noop_translation(source: str, translation: str) -> bool:
+    """True when translating barely changed the text — the result keeps almost all
+    of the source's letters/numbers (a list of product codes, model numbers, or
+    brand names that can't be meaningfully translated).
+
+    Such blocks are left as the original so their exact format and special glyphs
+    (®, ©, ™ — which the built-in CJK font can't even render) are preserved.
+    """
+    src = [t.lower() for t in _ALNUM.findall(source)]
+    if len(src) < 2:
+        return False  # too little to judge; translate normally
+    kept = set(t.lower() for t in _ALNUM.findall(translation))
+    preserved = sum(1 for t in src if t in kept)
+    return preserved / len(src) >= 0.8
+
+
 def _block_text(block) -> str:
     """Combine a block's lines into one paragraph, de-hyphenating soft line breaks.
 

@@ -292,7 +292,7 @@ def test_jobs_list_and_text(fake_google):
     client = TestClient(create_app())
     job_id = client.post(
         "/api/translate",
-        files={"file": ("doc.pdf", _pdf_bytes("hello world"), "application/pdf")},
+        files={"file": ("doc.pdf", _pdf_bytes("greetings"), "application/pdf")},
         data={"source": "auto", "target": "en"},
     ).json()["job_id"]
     _wait(client, job_id)
@@ -308,9 +308,9 @@ def test_jobs_list_and_text(fake_google):
     assert status["target"] == "en"
 
     orig = client.get(f"/api/jobs/{job_id}/text?which=original").json()
-    assert "hello world" in " ".join(orig["pages"]).lower()
+    assert "greetings" in " ".join(orig["pages"]).lower()
     trans = client.get(f"/api/jobs/{job_id}/text?which=result").json()
-    assert "HELLO" in " ".join(trans["pages"])  # fake provider uppercases
+    assert "GREETINGS" in " ".join(trans["pages"])  # fake provider uppercases
 
 
 def test_text_invalid_which_400(fake_google):

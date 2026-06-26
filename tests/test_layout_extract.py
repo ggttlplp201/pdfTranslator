@@ -62,3 +62,15 @@ def test_numeric_only_blocks_are_left_untouched():
     assert "42" in after and "40" in after and "60" in after  # numbers untouched
     assert "Hello" not in after                       # text was translated/redacted
     doc.close()
+
+
+def test_is_noop_translation_keeps_untranslatable_lists():
+    # A product/code list returns the same alphanumeric tokens → keep original
+    # (preserves ®, exact format).
+    assert layout.is_noop_translation(
+        "Pladur® N 10, Pladur® N 13", "Pladur® N 10、Pladur® N 13"
+    )
+    # A genuine sentence translation replaces the words → not a noop.
+    assert not layout.is_noop_translation("Hello world friends", "你好世界朋友")
+    # Too little content to judge → translate normally.
+    assert not layout.is_noop_translation("OMNIA", "OMNIA")
