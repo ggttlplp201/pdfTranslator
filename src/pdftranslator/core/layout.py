@@ -32,10 +32,21 @@ def _get_cached_font(fontname: str) -> fitz.Font:
 
 
 def redact_units(page, units: list[TextUnit]) -> None:
+    # Capture existing links before redaction: apply_redactions deletes any link
+    # annotation whose rectangle overlaps a redacted area.
+    links_before = page.get_links()
     for u in units:
         page.add_redact_annot(fitz.Rect(u.bbox))
     if units:
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+        # Restore links that were deleted. Links that did NOT overlap survive on
+        # their own, so we compare by xref to avoid creating duplicates.
+        if links_before:
+            after_xrefs = {lnk["xref"] for lnk in page.get_links()}
+            for lnk in links_before:
+                if lnk["xref"] not in after_xrefs:
+                    restore = {k: v for k, v in lnk.items() if k not in ("xref", "id")}
+                    page.insert_link(restore)
 
 
 def _fit_fontsize(width: float, height: float, text: str, fontname: str, max_size: float) -> float:

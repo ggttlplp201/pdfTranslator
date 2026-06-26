@@ -865,5 +865,5 @@ Confirm: images and vector graphics are in place, layout is intact, links still 
 ## Self-Review Notes
 
 - **Spec coverage:** digital-PDF in-place swap (Tasks 5–6), per-line grouping (Task 5, Global Constraints), provider abstraction + Google default (Task 3), language pairs + auto-detect (Task 2), built-in fonts for target script (Task 4 — Phase 1 deviation from bundled Noto, recorded in Global Constraints), text-fit auto-shrink (Task 6), CLI frontend (Task 8). LLM backend, web UI, desktop packaging, and OCR are out of Phase 1 scope by design.
-- **Image/link preservation** is covered by `PDF_REDACT_IMAGE_NONE` and verified in Task 6's test; links are preserved because redaction/insertion never touch link annotations.
+- **Image/link preservation** is covered by `PDF_REDACT_IMAGE_NONE` and verified in Task 6's test; links are explicitly captured via `page.get_links()` before `apply_redactions` and any deleted links are restored afterward via `page.insert_link()`, guarded by xref comparison to avoid duplicates.
 - **Type consistency:** `TextUnit` fields, `translate(texts, source, target)`, `extract_units`/`redact_units`/`insert_translations`/`_fit_fontsize`, and `translate_pdf(...)` signatures are used identically across tasks.

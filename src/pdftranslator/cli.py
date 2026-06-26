@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
+import requests
 import typer
 
 from .core.engine import translate_pdf
@@ -28,6 +29,9 @@ def translate(
                       provider=prov, progress=_progress)
     except ValueError as exc:
         raise typer.BadParameter(str(exc))
+    except requests.RequestException as exc:
+        typer.echo(f"Translation failed: {exc}", err=True)
+        raise typer.Exit(1)
     typer.echo(f"Wrote {out_path}")
 
 
