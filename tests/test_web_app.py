@@ -349,13 +349,12 @@ def test_translate_defaults_to_google(fake_google):
     assert client.get(f"/api/jobs/{job_id}").json()["engine"] == "google"
 
 
-def test_app_js_renders_page_images_and_settings():
+def test_app_js_renders_page_images():
     client = TestClient(create_app())
     js = client.get("/static/app.js").text
     assert "/api/translate" in js
     # panes render the actual rendered PDF pages as images, not text
     assert "/pages?which=" in js and "/page/" in js
-    assert "/api/settings" in js
     assert "engine" in js  # sends the engine field
 
 
@@ -382,15 +381,68 @@ def test_redesign_structure_present():
     assert "Hanken Grotesk" in client.get("/static/styles.css").text
 
 
-def test_key_status_element_and_verify_behavior():
+def test_byok_key_handling_is_browser_local():
     client = TestClient(create_app())
     html = client.get("/").text
     js = client.get("/static/app.js").text
     assert 'id="keyStatus"' in html
-    # success message is shown only after re-reading settings to confirm persistence
-    assert "successfully" in js
-    # saveKey re-fetches /api/settings to verify the key actually saved
-    assert js.count("/api/settings") >= 2
+    # Keys live in the browser (localStorage), never POSTed to the server, and
+    # are attached to the translate request instead.
+    assert "localStorage" in js
+    assert "/api/settings" not in js
+    assert 'fd.append("api_key"' in js
+    # The privacy note reassures the user the key is not stored server-side.
+    assert "never stored on our server" in html
+
+
+def test_translate_accepts_per_request_key(monkeypatch):
+    """A key sent with the request is used to build the provider (BYOK)."""
+    seen = {}
+
+    class Fake:
+        def translate(self, texts, source, target):
+            return [t.upper() for t in texts]
+
+    def fake_build(engine, *, api_key=None):
+        seen["engine"] = engine
+        seen["api_key"] = api_key
+        return Fake()
+
+    monkeypatch.setattr(providers, "build_provider", fake_build)
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/translate",
+        files={"file": ("in.pdf", _pdf_bytes("hello"), "application/pdf")},
+        data={"source": "auto", "target": "en", "engine": "claude", "api_key": "sk-byok"},
+    )
+    assert resp.status_code == 200
+    assert seen == {"engine": "claude", "api_key": "sk-byok"}
+
+
+def test_byok_only_blocks_server_key_storage(monkeypatch):
+    monkeypatch.setenv("PDFTRANSLATOR_BYOK_ONLY", "1")
+    client = TestClient(create_app())
+    # Saving a key on the server is refused in public/hosted mode.
+    r = client.post("/api/settings", data={"engine": "claude", "api_key": "sk-x"})
+    assert r.status_code == 403
+    # And an LLM translate with no per-request key is rejected (no server fallback).
+    r2 = client.post(
+        "/api/translate",
+        files={"file": ("d.pdf", _pdf_bytes(), "application/pdf")},
+        data={"source": "auto", "target": "en", "engine": "claude"},
+    )
+    assert r2.status_code == 400
+
+
+def test_ui_language_toggle_present():
+    client = TestClient(create_app())
+    html = client.get("/").text
+    js = client.get("/static/app.js").text
+    # A language toggle control exists and the JS ships an English+Chinese table.
+    assert 'id="langToggle"' in html
+    assert "data-i18n=" in html
+    assert "翻译" in js  # Simplified Chinese strings are bundled
+    assert "applyLang" in js
 
 
 def test_history_has_close_control():

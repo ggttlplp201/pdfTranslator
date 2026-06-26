@@ -14,7 +14,7 @@
   <!-- History panel (hidden by default) -->
   <aside id="historyPanel" class="history-panel hidden">
     <div class="history-header">
-      <span class="history-title">Translation History</span>
+      <span class="history-title" data-i18n="historyTitle">Translation History</span>
       <button id="historyClose" class="history-close" aria-label="Close history">&times;</button>
     </div>
     <ul id="historyList" class="history-list"></ul>
@@ -29,15 +29,26 @@
           <div class="wordmark-icon">文</div>
           <span class="wordmark-text">PDF Translator</span>
         </div>
-        <button id="historyBtn" class="btn-ghost">
-          <!-- clock-history icon -->
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 3v5h5"/>
-            <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
-            <path d="M12 7v5l3 2"/>
-          </svg>
-          History
-        </button>
+        <div class="header-actions">
+          <button id="langToggle" class="btn-ghost" aria-label="Switch interface language">
+            <!-- globe icon -->
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M3 12h18"/>
+              <path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/>
+            </svg>
+            <span id="langToggleLabel">中文</span>
+          </button>
+          <button id="historyBtn" class="btn-ghost">
+            <!-- clock-history icon -->
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 3v5h5"/>
+              <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
+              <path d="M12 7v5l3 2"/>
+            </svg>
+            <span data-i18n="history">History</span>
+          </button>
+        </div>
       </header>
 
       <!-- Dropzone -->
@@ -50,7 +61,7 @@
             <path d="M5 21h14"/>
           </svg>
         </div>
-        <div class="dropzone-lead">Drag &amp; drop a PDF here, or <span class="browse-link">browse</span></div>
+        <div class="dropzone-lead"><span data-i18n="dropLead">Drag &amp; drop a PDF here, or </span><span class="browse-link" data-i18n="browse">browse</span></div>
         <div id="fileMeta" class="dropzone-meta hidden">
           <!-- file icon -->
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -69,13 +80,13 @@
 
         <!-- From select -->
         <div class="select-wrap">
-          <label class="select-label" for="from">From</label>
+          <label class="select-label" for="from" data-i18n="from">From</label>
           <div class="select-inner">
             <select id="from" class="select-nq">
-              <option value="auto">Auto-detect</option>
-              <option value="en">English</option>
-              <option value="zh">Chinese (Simplified)</option>
-              <option value="pt">Portuguese</option>
+              <option value="auto" data-i18n="optAuto">Auto-detect</option>
+              <option value="en" data-i18n="optEn">English</option>
+              <option value="zh" data-i18n="optZh">Chinese (Simplified)</option>
+              <option value="pt" data-i18n="optPt">Portuguese</option>
             </select>
             <!-- chevron-down icon -->
             <svg class="chevron-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -97,12 +108,12 @@
 
         <!-- To select -->
         <div class="select-wrap">
-          <label class="select-label" for="to">To</label>
+          <label class="select-label" for="to" data-i18n="to">To</label>
           <div class="select-inner">
             <select id="to" class="select-nq">
-              <option value="zh">Chinese (Simplified)</option>
-              <option value="en">English</option>
-              <option value="pt">Portuguese</option>
+              <option value="zh" data-i18n="optZh">Chinese (Simplified)</option>
+              <option value="en" data-i18n="optEn">English</option>
+              <option value="pt" data-i18n="optPt">Portuguese</option>
             </select>
             <!-- chevron-down icon -->
             <svg class="chevron-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -113,12 +124,12 @@
 
         <!-- Engine select -->
         <div class="select-wrap">
-          <label class="select-label" for="engine">Engine</label>
+          <label class="select-label" for="engine" data-i18n="engine">Engine</label>
           <div class="select-inner">
             <select id="engine" class="select-nq">
-              <option value="google">Google Translate</option>
-              <option value="claude">Claude</option>
-              <option value="openai">OpenAI</option>
+              <option value="google" data-i18n="engGoogle">Google Translate</option>
+              <option value="claude" data-i18n="engClaude">Claude</option>
+              <option value="openai" data-i18n="engOpenai">OpenAI</option>
             </select>
             <!-- chevron-down icon -->
             <svg class="chevron-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -129,17 +140,18 @@
 
         <!-- API key (hidden until LLM engine selected) -->
         <div id="apiKeyWrap" class="api-key-wrap hidden">
-          <label class="select-label" for="apiKey">API Key</label>
+          <label class="select-label" for="apiKey" data-i18n="apiKey">API Key</label>
           <div class="api-key-inner">
-            <input id="apiKey" type="password" class="api-key-input" placeholder="Paste your API key…" autocomplete="off" />
-            <button id="saveKeyBtn" class="btn-save-key">Save</button>
+            <input id="apiKey" type="password" class="api-key-input" placeholder="Paste your API key…" data-i18n-ph="keyPlaceholder" autocomplete="off" />
+            <button id="saveKeyBtn" class="btn-save-key" data-i18n="save">Save</button>
           </div>
           <span id="keyStatus" class="key-status hidden"></span>
+          <span class="key-note" data-i18n="keyNote">Your key is sent securely and used only for your translation — never stored on our server. For maximum privacy, use the desktop app.</span>
         </div>
 
         <!-- Translate button -->
         <button id="translateBtn" class="btn-translate">
-          Translate
+          <span data-i18n="translate">Translate</span>
           <!-- arrow-right icon -->
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M5 12h14"/>
@@ -155,7 +167,7 @@
         <!-- Idle state -->
         <div id="statusIdle" class="status-child status-idle">
           <span class="status-ready-dot" aria-hidden="true"></span>
-          <span>Ready to translate</span>
+          <span data-i18n="ready">Ready to translate</span>
         </div>
 
         <!-- Progress state -->
@@ -175,7 +187,7 @@
                 <path d="M20 6 9 17l-5-5"/>
               </svg>
             </span>
-            <span class="status-done-label">Translation complete</span>
+            <span class="status-done-label" data-i18n="complete">Translation complete</span>
           </div>
           <button id="downloadBtn" class="btn-download">
             <!-- download icon -->
@@ -184,14 +196,14 @@
               <path d="M7 10l5 5 5-5"/>
               <path d="M12 15V3"/>
             </svg>
-            Download translated PDF
+            <span data-i18n="download">Download translated PDF</span>
           </button>
         </div>
 
         <!-- Error state -->
         <div id="statusError" class="status-child status-error hidden">
           <span id="errorText" class="error-text"></span>
-          <button id="retryBtn" class="btn-retry">Retry</button>
+          <button id="retryBtn" class="btn-retry" data-i18n="retry">Retry</button>
         </div>
 
       </div><!-- /statusBar -->
@@ -202,7 +214,7 @@
         <!-- Original pane -->
         <div class="pane">
           <div class="pane-label-row">
-            <span class="pane-label pane-label-orig">ORIGINAL</span>
+            <span class="pane-label pane-label-orig" data-i18n="original">ORIGINAL</span>
             <span id="origBadge" class="pane-badge pane-badge-orig">EN</span>
           </div>
           <div class="pane-card pane-card-orig">
@@ -213,7 +225,7 @@
         <!-- Translated pane -->
         <div class="pane">
           <div class="pane-label-row">
-            <span class="pane-label pane-label-trans">TRANSLATED</span>
+            <span class="pane-label pane-label-trans" data-i18n="translated">TRANSLATED</span>
             <span id="transBadge" class="pane-badge pane-badge-trans">ZH</span>
           </div>
           <div class="pane-card pane-card-trans">

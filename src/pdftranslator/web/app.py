@@ -1,4 +1,5 @@
 import io
+import os
 import sys
 from pathlib import Path
 
@@ -29,6 +30,15 @@ STATIC_DIR = _static_dir()
 PREVIEW_DPI = 110
 
 
+def _byok_only() -> bool:
+    """Hosted (public) mode: keys are bring-your-own, sent per request and never
+    stored server-side. Set PDFTRANSLATOR_BYOK_ONLY=1 on a shared deployment so
+    no key is ever written to (or read from) the server's config file. Off by
+    default, which keeps the local desktop convenience of a machine-saved key.
+    """
+    return os.environ.get("PDFTRANSLATOR_BYOK_ONLY", "").lower() in ("1", "true", "yes")
+
+
 def _page_texts(path: Path) -> list[str]:
     doc = fitz.open(path)
     try:
@@ -52,6 +62,9 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         source: str = Form(...),
         target: str = Form(...),
         engine: str = Form("google"),
+        # Bring-your-own-key: sent with the request, used only to build the
+        # provider for this translation, and never stored or logged.
+        api_key: str | None = Form(None),
     ) -> dict:
         try:
             lang.validate_source(source)
@@ -59,14 +72,17 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
-        api_key = None
+        key = None
         if engine in ("claude", "openai"):
-            api_key = settings.get_key(engine)
-            if not api_key:
+            key = (api_key or "").strip()
+            # Fall back to a machine-saved key only in local desktop mode.
+            if not key and not _byok_only():
+                key = settings.get_key(engine) or ""
+            if not key:
                 label = "Claude" if engine == "claude" else "OpenAI"
                 raise HTTPException(status_code=400, detail=f"Add your {label} API key first.")
         try:
-            provider = providers.build_provider(engine, api_key=api_key)
+            provider = providers.build_provider(engine, api_key=key)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
@@ -206,6 +222,12 @@ def create_app(store: JobStore | None = None) -> FastAPI:
 
     @app.post("/api/settings")
     def save_settings(engine: str = Form(...), api_key: str = Form(...)) -> dict:
+        if _byok_only():
+            # Public deployment: refuse to persist any key on the server.
+            raise HTTPException(
+                status_code=403,
+                detail="Server-side key storage is disabled. Your key stays in your browser.",
+            )
         try:
             settings.set_key(engine, api_key)
         except ValueError as exc:

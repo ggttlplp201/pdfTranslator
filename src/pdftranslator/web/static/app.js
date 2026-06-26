@@ -1,7 +1,139 @@
 const $ = (id) => document.getElementById(id);
-const state = { file: null, jobId: null, poll: null, downloadUrl: null };
+const state = { file: null, jobId: null, poll: null, downloadUrl: null, lang: "en" };
 
 const LANG_BADGE = { auto: "AUTO", en: "EN", pt: "PT", zh: "ZH" };
+
+// ---- i18n ----------------------------------------------------------------
+// Static UI text is translated via [data-i18n]/[data-i18n-ph] attributes in the
+// HTML; dynamic strings built in JS go through t(). Function-valued entries take
+// arguments (e.g. page numbers). The user's choice is remembered in the browser.
+const I18N = {
+  en: {
+    historyTitle: "Translation History",
+    history: "History",
+    dropLead: "Drag & drop a PDF here, or ",
+    browse: "browse",
+    from: "From",
+    to: "To",
+    engine: "Engine",
+    apiKey: "API Key",
+    optAuto: "Auto-detect",
+    optEn: "English",
+    optZh: "Chinese (Simplified)",
+    optPt: "Portuguese",
+    engGoogle: "Google Translate",
+    engClaude: "Claude",
+    engOpenai: "OpenAI",
+    keyPlaceholder: "Paste your API key…",
+    keyPlaceholderSaved: "Key saved in this browser — enter a new one to replace",
+    save: "Save",
+    keyNote: "Your key is sent securely and used only for your translation — never stored on our server. For maximum privacy, use the desktop app.",
+    translate: "Translate",
+    ready: "Ready to translate",
+    complete: "Translation complete",
+    download: "Download translated PDF",
+    retry: "Retry",
+    original: "ORIGINAL",
+    translated: "TRANSLATED",
+    langName: "中文",
+    starting: "Starting…",
+    translatingPage: (p, c) => `Translating page ${p} of ${c}…`,
+    previewUnavailable: "Preview unavailable.",
+    noPages: "No pages to preview.",
+    errChoosePdfFirst: "Please choose a PDF first.",
+    errChoosePdf: "Please choose a PDF file.",
+    errNetUpload: "Network error during upload.",
+    errUpload: "Upload failed.",
+    errTranslateFailed: "Translation failed.",
+    keyEnterFirst: "Enter a key first.",
+    keySaved: (label) => `${label} key saved in your browser ✓`,
+    keyCleared: "Key removed from this browser.",
+    addKeyFirst: (label) => `Add your ${label} API key first.`,
+  },
+  zh: {
+    historyTitle: "翻译历史",
+    history: "历史",
+    dropLead: "拖放 PDF 到此处，或",
+    browse: "浏览",
+    from: "源语言",
+    to: "目标语言",
+    engine: "翻译引擎",
+    apiKey: "API 密钥",
+    optAuto: "自动检测",
+    optEn: "英语",
+    optZh: "简体中文",
+    optPt: "葡萄牙语",
+    engGoogle: "谷歌翻译",
+    engClaude: "Claude",
+    engOpenai: "OpenAI",
+    keyPlaceholder: "粘贴你的 API 密钥…",
+    keyPlaceholderSaved: "密钥已保存在此浏览器 — 输入新密钥可替换",
+    save: "保存",
+    keyNote: "你的密钥通过加密连接发送，仅用于本次翻译 — 绝不存储在我们的服务器上。如需最高隐私保护，请使用桌面版应用。",
+    translate: "翻译",
+    ready: "准备就绪",
+    complete: "翻译完成",
+    download: "下载翻译后的 PDF",
+    retry: "重试",
+    original: "原文",
+    translated: "译文",
+    langName: "EN",
+    starting: "正在开始…",
+    translatingPage: (p, c) => `正在翻译第 ${p} / ${c} 页…`,
+    previewUnavailable: "无法预览。",
+    noPages: "没有可预览的页面。",
+    errChoosePdfFirst: "请先选择一个 PDF 文件。",
+    errChoosePdf: "请选择 PDF 文件。",
+    errNetUpload: "上传时发生网络错误。",
+    errUpload: "上传失败。",
+    errTranslateFailed: "翻译失败。",
+    keyEnterFirst: "请先输入密钥。",
+    keySaved: (label) => `${label} 密钥已保存到浏览器 ✓`,
+    keyCleared: "已从此浏览器移除密钥。",
+    addKeyFirst: (label) => `请先添加你的 ${label} API 密钥。`,
+  },
+};
+
+function t(key, ...args) {
+  const dict = I18N[state.lang] || I18N.en;
+  const v = dict[key] !== undefined ? dict[key] : I18N.en[key];
+  return typeof v === "function" ? v(...args) : v;
+}
+
+function applyLang(lng) {
+  state.lang = I18N[lng] ? lng : "en";
+  const dict = I18N[state.lang];
+  document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en";
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const v = dict[el.getAttribute("data-i18n")];
+    if (typeof v === "string") el.textContent = v;
+  });
+  document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
+    const v = dict[el.getAttribute("data-i18n-ph")];
+    if (typeof v === "string") el.placeholder = v;
+  });
+  const label = $("langToggleLabel");
+  if (label) label.textContent = dict.langName;
+  try { localStorage.setItem("pdftx_lang", state.lang); } catch {}
+  // Re-derive any text the engine UI sets dynamically (e.g. key placeholder).
+  refreshEngineUi();
+}
+
+function toggleLang() {
+  applyLang(state.lang === "en" ? "zh" : "en");
+}
+
+// ---- bring-your-own-key (browser-local) ----------------------------------
+const keyStoreId = (engine) => `pdftx_key_${engine}`;
+function getStoredKey(engine) {
+  try { return localStorage.getItem(keyStoreId(engine)) || ""; } catch { return ""; }
+}
+function storeKey(engine, value) {
+  try {
+    if (value) localStorage.setItem(keyStoreId(engine), value);
+    else localStorage.removeItem(keyStoreId(engine));
+  } catch {}
+}
 
 function showStatus(which) {
   for (const id of ["statusIdle", "statusProgress", "statusDone", "statusError"]) {
@@ -25,7 +157,7 @@ function humanSize(n) {
 function setFile(f) {
   if (!f) return;
   const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
-  if (!isPdf) { showError("Please choose a PDF file."); return; }
+  if (!isPdf) { showError(t("errChoosePdf")); return; }
   state.file = f;
   // #fileMeta contains an icon SVG + child spans; set spans individually, never
   // overwrite textContent on the parent (that destroys the icon and the spans).
@@ -45,16 +177,13 @@ async function safeDetail(res) {
 }
 
 // ---- engine menu + key ----
-async function refreshEngineUi() {
+function refreshEngineUi() {
   const engine = $("engine").value;
   const needsKey = engine === "claude" || engine === "openai";
   clearKeyStatus();
   $("apiKeyWrap").classList.toggle("hidden", !needsKey);
   if (needsKey) {
-    try {
-      const s = await (await fetch("/api/settings")).json();
-      $("apiKey").placeholder = s[engine] ? "Key saved — enter a new one to replace" : "Paste your API key";
-    } catch {}
+    $("apiKey").placeholder = getStoredKey(engine) ? t("keyPlaceholderSaved") : t("keyPlaceholder");
   }
 }
 
@@ -71,48 +200,30 @@ function clearKeyStatus() {
   if (el) el.classList.add("hidden");
 }
 
-async function saveKey() {
+// Keys are stored ONLY in this browser (localStorage) and sent with each
+// translation request — never persisted on the server.
+function saveKey() {
   const engine = $("engine").value;
   const key = $("apiKey").value.trim();
-  if (!key) { showKeyStatus("Enter a key first.", false); return; }
-
-  let res;
-  try {
-    const fd = new FormData();
-    fd.append("engine", engine);
-    fd.append("api_key", key);
-    res = await fetch("/api/settings", { method: "POST", body: fd });
-  } catch {
-    showKeyStatus("Could not reach the server.", false);
-    return;
-  }
-  if (!res.ok) {
-    showKeyStatus((await safeDetail(res)) || "Could not save key.", false);
-    return;
-  }
-
-  // Verify the key actually persisted before showing success — re-read settings
-  // and confirm this engine now reports a saved key.
-  let saved = false;
-  try {
-    const s = await (await fetch("/api/settings")).json();
-    saved = !!s[engine];
-  } catch {
-    saved = false;
-  }
-  if (saved) {
-    $("apiKey").value = "";
-    refreshEngineUi();
-    const label = engine === "claude" ? "Claude" : "OpenAI";
-    showKeyStatus(`${label} key uploaded successfully ✓`, true);
-  } else {
-    showKeyStatus("Key did not save — please try again.", false);
-  }
+  if (!key) { showKeyStatus(t("keyEnterFirst"), false); return; }
+  storeKey(engine, key);
+  $("apiKey").value = "";
+  refreshEngineUi();
+  const label = engine === "claude" ? "Claude" : "OpenAI";
+  showKeyStatus(t("keySaved", label), true);
 }
 
 // ---- translate ----
 async function startTranslate() {
-  if (!state.file) { showError("Please choose a PDF first."); return; }
+  if (!state.file) { showError(t("errChoosePdfFirst")); return; }
+  const engine = $("engine").value;
+  const needsKey = engine === "claude" || engine === "openai";
+  const key = needsKey ? getStoredKey(engine) : "";
+  if (needsKey && !key) {
+    showError(t("addKeyFirst", engine === "claude" ? "Claude" : "OpenAI"));
+    return;
+  }
+
   $("origView").innerHTML = "";
   $("transView").innerHTML = "";
   $("translateBtn").disabled = true;
@@ -123,12 +234,13 @@ async function startTranslate() {
   fd.append("file", state.file);
   fd.append("source", $("from").value);
   fd.append("target", $("to").value);
-  fd.append("engine", $("engine").value);
+  fd.append("engine", engine);
+  if (key) fd.append("api_key", key);
 
   let res;
   try { res = await fetch("/api/translate", { method: "POST", body: fd }); }
-  catch { return fail("Network error during upload."); }
-  if (!res.ok) return fail((await safeDetail(res)) || "Upload failed.");
+  catch { return fail(t("errNetUpload")); }
+  if (!res.ok) return fail((await safeDetail(res)) || t("errUpload"));
 
   const data = await res.json();
   state.jobId = data.job_id;
@@ -142,7 +254,7 @@ function setProgress(page, count) {
   const fill = document.querySelector("#progressBar .progress-bar-fill");
   const pct = count > 0 ? Math.round((page / count) * 100) : 6;
   if (fill) fill.style.width = pct + "%";
-  $("progressText").textContent = count ? `Translating page ${page} of ${count}…` : "Starting…";
+  $("progressText").textContent = count ? t("translatingPage", page, count) : t("starting");
 }
 
 function fail(msg) {
@@ -181,7 +293,7 @@ function pollStatus() {
       $("translateBtn").disabled = false;
       refreshHistory();
     } else if (s.status === "error") {
-      fail(s.error || "Translation failed.");
+      fail(s.error || t("errTranslateFailed"));
     }
   }, 1000);
 }
@@ -195,10 +307,10 @@ async function loadPages(which, viewId) {
   view.innerHTML = "";
   let res;
   try { res = await fetch(`/api/jobs/${state.jobId}/pages?which=${which}`); }
-  catch { view.textContent = "Preview unavailable."; return; }
-  if (!res.ok) { view.textContent = "Preview unavailable."; return; }
+  catch { view.textContent = t("previewUnavailable"); return; }
+  if (!res.ok) { view.textContent = t("previewUnavailable"); return; }
   const { pages } = await res.json();
-  if (!pages) { view.textContent = "No pages to preview."; return; }
+  if (!pages) { view.textContent = t("noPages"); return; }
   for (let i = 0; i < pages; i++) {
     const img = document.createElement("img");
     img.className = "pdfpage";
@@ -270,6 +382,7 @@ function wireUp() {
   $("saveKeyBtn").addEventListener("click", saveKey);
   $("translateBtn").addEventListener("click", startTranslate);
   if ($("retryBtn")) $("retryBtn").addEventListener("click", startTranslate);
+  if ($("langToggle")) $("langToggle").addEventListener("click", toggleLang);
   // #downloadBtn is a <button>; navigate to the stored download URL on click
   if ($("downloadBtn")) {
     $("downloadBtn").addEventListener("click", () => {
@@ -288,8 +401,14 @@ function wireUp() {
     if (e.key === "Escape") $("historyPanel").classList.add("hidden");
   });
 
+  // Language priority: explicit ?lang= override, then remembered choice, then EN.
+  let saved = "en";
+  try {
+    const q = new URLSearchParams(location.search).get("lang");
+    saved = (q && I18N[q] && q) || localStorage.getItem("pdftx_lang") || "en";
+  } catch {}
+  applyLang(saved);
   setBadges();
-  refreshEngineUi();
   showStatus("statusIdle");
 }
 
