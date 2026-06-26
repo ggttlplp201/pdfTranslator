@@ -28,6 +28,11 @@ pdftranslate-web = "pdftranslator.web.__main__:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# Ship the web UI assets inside the installed package — without this the wheel
+# omits them and the server crashes at startup (StaticFiles: directory missing).
+"pdftranslator.web" = ["static/*"]
+
 [tool.pytest.ini_options]
 # Put the package on sys.path directly so the suite does not depend on the
 # editable install's .pth, which is flaky when the venv lives in iCloud Drive.
