@@ -33,7 +33,7 @@ def fake_google(monkeypatch):
     class Fake:
         def translate(self, texts, source, target):
             return [t.upper() for t in texts]
-    monkeypatch.setattr(providers, "build_provider", lambda name: Fake())
+    monkeypatch.setattr(providers, "build_provider", lambda *a, **k: Fake())
 
 
 def test_index_served():
@@ -99,7 +99,7 @@ def test_result_404_while_running(monkeypatch):
             gate.wait()
             return [t.upper() for t in texts]
 
-    monkeypatch.setattr(providers, "build_provider", lambda name: BlockingFake())
+    monkeypatch.setattr(providers, "build_provider", lambda *a, **k: BlockingFake())
 
     client = TestClient(create_app())
     try:
@@ -165,7 +165,7 @@ def test_job_error_surfaces(monkeypatch):
     class Boom:
         def translate(self, texts, source, target):
             raise requests.RequestException("rate limited")
-    monkeypatch.setattr(providers, "build_provider", lambda name: Boom())
+    monkeypatch.setattr(providers, "build_provider", lambda *a, **k: Boom())
 
     client = TestClient(create_app())
     job_id = client.post(
@@ -255,7 +255,7 @@ def test_result_pages_404_while_running(monkeypatch):
             gate.wait(timeout=5)
             return [t.upper() for t in texts]
 
-    monkeypatch.setattr(providers, "build_provider", lambda name: Blocking())
+    monkeypatch.setattr(providers, "build_provider", lambda *a, **k: Blocking())
     client = TestClient(create_app())
     try:
         job_id = client.post(
@@ -320,3 +320,28 @@ def test_text_invalid_which_400(fake_google):
     ).json()["job_id"]
     _wait(client, job_id)
     assert client.get(f"/api/jobs/{job_id}/text?which=nope").status_code == 400
+
+
+def test_translate_llm_without_key_is_400(tmp_path, monkeypatch):
+    monkeypatch.setenv("PDFTRANSLATOR_CONFIG_DIR", str(tmp_path))
+    client = TestClient(create_app())
+    r = client.post(
+        "/api/translate",
+        files={"file": ("d.pdf", _pdf_bytes(), "application/pdf")},
+        data={"source": "auto", "target": "en", "engine": "claude"},
+    )
+    assert r.status_code == 400
+    assert "key" in r.json()["detail"].lower()
+
+
+def test_translate_defaults_to_google(fake_google):
+    client = TestClient(create_app())
+    r = client.post(
+        "/api/translate",
+        files={"file": ("d.pdf", _pdf_bytes("hi"), "application/pdf")},
+        data={"source": "auto", "target": "en"},  # no engine field
+    )
+    assert r.status_code == 200
+    job_id = r.json()["job_id"]
+    _wait(client, job_id)
+    assert client.get(f"/api/jobs/{job_id}").json()["engine"] == "google"

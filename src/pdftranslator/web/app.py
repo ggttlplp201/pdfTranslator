@@ -36,25 +36,42 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         file: UploadFile = File(...),
         source: str = Form(...),
         target: str = Form(...),
+        engine: str = Form("google"),
     ) -> dict:
         try:
             lang.validate_source(source)
             lang.validate_target(target)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+
+        api_key = None
+        if engine in ("claude", "openai"):
+            api_key = settings.get_key(engine)
+            if not api_key:
+                label = "Claude" if engine == "claude" else "OpenAI"
+                raise HTTPException(status_code=400, detail=f"Add your {label} API key first.")
+        try:
+            provider = providers.build_provider(engine, api_key=api_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
         data = await file.read()
         if not data:
             raise HTTPException(status_code=400, detail="empty file")
-        # Magic-byte sniff (not full validation — just rejects obvious non-PDFs)
         if not data.startswith(b"%PDF"):
             raise HTTPException(status_code=400, detail="not a PDF file")
-        # Calculate page count
-        doc = fitz.open(stream=io.BytesIO(data), filetype="pdf")
-        page_count = doc.page_count
-        doc.close()
-        # Build provider (default to google, which has no key requirement)
-        provider = providers.build_provider("google")
-        job = app.state.store.create(data, source, target, filename=file.filename, page_count=page_count, provider=provider)
+        try:
+            doc = fitz.open(stream=data, filetype="pdf")
+            page_count = doc.page_count
+            doc.close()
+        except Exception:
+            raise HTTPException(status_code=400, detail="could not read PDF")
+
+        job = app.state.store.create(
+            data, source, target,
+            engine=engine, provider=provider,
+            filename=file.filename or "document.pdf", page_count=page_count,
+        )
         return {"job_id": job.id}
 
     @app.get("/api/jobs/{job_id}")
