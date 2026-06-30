@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { file: null, jobId: null, poll: null, downloadUrl: null, lang: "en" };
+const state = { file: null, jobId: null, poll: null, refinePoll: null, downloadWhich: "result", lang: "en" };
 
 const LANG_BADGE = { auto: "AUTO", en: "EN", pt: "PT", zh: "ZH" };
 
@@ -33,6 +33,12 @@ const I18N = {
     complete: "Translation complete",
     download: "Download translated PDF",
     retry: "Retry",
+    refine: "Get refined version",
+    refining: (p) => `Refining… page ${p}`,
+    refineStarting: "Refining… (LLM + OCR, slower)",
+    refineNeedsKey: "Pick Claude or OpenAI and add your API key to get the refined version.",
+    refineReady: "Refined version ready ✓ — showing it",
+    refineFailed: "Refined version failed.",
     original: "ORIGINAL",
     translated: "TRANSLATED",
     langName: "中文",
@@ -75,6 +81,12 @@ const I18N = {
     complete: "翻译完成",
     download: "下载翻译后的 PDF",
     retry: "重试",
+    refine: "获取精修版",
+    refining: (p) => `精修中…第 ${p} 页`,
+    refineStarting: "精修中…（大模型 + OCR，较慢）",
+    refineNeedsKey: "请选择 Claude 或 OpenAI 并添加 API 密钥以生成精修版。",
+    refineReady: "精修版已就绪 ✓ — 正在显示",
+    refineFailed: "精修版生成失败。",
     original: "原文",
     translated: "译文",
     langName: "EN",
@@ -227,6 +239,7 @@ async function startTranslate() {
   $("origView").innerHTML = "";
   $("transView").innerHTML = "";
   $("translateBtn").disabled = true;
+  resetRefineUi();
   showStatus("statusProgress");
   setProgress(0, 0);
 
@@ -287,8 +300,8 @@ function pollStatus() {
           humanSize(state.file.size) + ` · ${pages} page${pages !== 1 ? "s" : ""}`;
       }
       await loadPages("result", "transView");
-      // #downloadBtn is a <button>, not <a> — store URL and trigger via click handler
-      state.downloadUrl = `/api/jobs/${state.jobId}/result`;
+      state.downloadWhich = "result";
+      resetRefineUi();
       showStatus("statusDone");
       $("translateBtn").disabled = false;
       refreshHistory();
@@ -350,9 +363,64 @@ async function openHistory(jobId) {
   const s = await (await fetch(`/api/jobs/${jobId}`)).json();
   if (s.status === "done") {
     await loadPages("result", "transView");
-    state.downloadUrl = `/api/jobs/${jobId}/result`;
+    state.downloadWhich = "result";
+    resetRefineUi();
     showStatus("statusDone");
   }
+}
+
+// ---- refined version (LLM + OCR, on demand) ----
+function showRefineStatus(msg, kind) {
+  const el = $("refineStatus");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.remove("hidden", "ok", "err");
+  if (kind) el.classList.add(kind);
+}
+
+function resetRefineUi() {
+  if (state.refinePoll) { clearInterval(state.refinePoll); state.refinePoll = null; }
+  const btn = $("refineBtn");
+  if (btn) btn.disabled = false;
+  const el = $("refineStatus");
+  if (el) el.classList.add("hidden");
+}
+
+async function startRefine() {
+  const engine = $("engine").value;
+  const key = (engine === "claude" || engine === "openai") ? getStoredKey(engine) : "";
+  if (!key) { showRefineStatus(t("refineNeedsKey"), "err"); return; }
+  if (!state.jobId) return;
+
+  const fd = new FormData();
+  fd.append("engine", engine);
+  fd.append("api_key", key);
+  let res;
+  try { res = await fetch(`/api/jobs/${state.jobId}/refine`, { method: "POST", body: fd }); }
+  catch { showRefineStatus(t("errNetUpload"), "err"); return; }
+  if (!res.ok) { showRefineStatus((await safeDetail(res)) || t("refineFailed"), "err"); return; }
+
+  $("refineBtn").disabled = true;
+  showRefineStatus(t("refineStarting"), null);
+  if (state.refinePoll) clearInterval(state.refinePoll);
+  state.refinePoll = setInterval(async () => {
+    let r;
+    try { r = await fetch(`/api/jobs/${state.jobId}`); } catch { return; }
+    if (!r.ok) return;
+    const s = await r.json();
+    if (s.refined_status === "running") {
+      showRefineStatus(s.refined_page ? t("refining", s.refined_page) : t("refineStarting"), null);
+    } else if (s.refined_status === "done") {
+      clearInterval(state.refinePoll); state.refinePoll = null;
+      await loadPages("refined", "transView");
+      state.downloadWhich = "refined";
+      showRefineStatus(t("refineReady"), "ok");
+    } else if (s.refined_status === "error") {
+      clearInterval(state.refinePoll); state.refinePoll = null;
+      $("refineBtn").disabled = false;
+      showRefineStatus(s.refined_error || t("refineFailed"), "err");
+    }
+  }, 1000);
 }
 
 function swapLangs() {
@@ -383,12 +451,15 @@ function wireUp() {
   $("translateBtn").addEventListener("click", startTranslate);
   if ($("retryBtn")) $("retryBtn").addEventListener("click", startTranslate);
   if ($("langToggle")) $("langToggle").addEventListener("click", toggleLang);
-  // #downloadBtn is a <button>; navigate to the stored download URL on click
+  if ($("refineBtn")) $("refineBtn").addEventListener("click", startRefine);
+  // #downloadBtn is a <button>; download the currently-shown version (fast or
+  // refined). ?download=1 makes the server send it as an attachment.
   if ($("downloadBtn")) {
     $("downloadBtn").addEventListener("click", () => {
-      // ?download=1 makes the server send it as an attachment (save dialog)
-      // rather than navigating the page to an inline PDF.
-      if (state.downloadUrl) window.location.href = state.downloadUrl + "?download=1";
+      if (state.jobId) {
+        window.location.href =
+          `/api/jobs/${state.jobId}/result?which=${state.downloadWhich || "result"}&download=1`;
+      }
     });
   }
   $("historyBtn").addEventListener("click", () => {

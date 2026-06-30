@@ -686,6 +686,39 @@ body {
   color: #C5221F;
 }
 
+/* Done-state actions: refined + download buttons */
+.status-done-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.btn-refine {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  background: var(--surface);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-refine:hover { background: #EAF1FC; }
+.btn-refine:disabled { opacity: .6; cursor: default; }
+.refine-status {
+  margin-left: 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.refine-status.ok { color: var(--success); }
+.refine-status.err { color: #C5221F; }
+
 /* Privacy note under the API-key field (BYOK reassurance) */
 .key-note {
   margin-top: 4px;

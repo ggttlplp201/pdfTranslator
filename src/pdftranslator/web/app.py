@@ -149,7 +149,32 @@ def create_app(store: JobStore | None = None) -> FastAPI:
             "source": job.source,
             "target": job.target,
             "engine": job.engine,
+            "refined_status": job.refined_status,
+            "refined_page": job.refined_page,
+            "refined_error": job.refined_error,
+            "refined_engine": job.refined_engine,
         }
+
+    @app.post("/api/jobs/{job_id}/refine")
+    def refine(job_id: str, engine: str = Form(...), api_key: str | None = Form(None)) -> dict:
+        """Start the on-demand refined pass (LLM + OCR) for an existing job."""
+        job = _get_job(job_id)
+        if engine not in ("claude", "openai"):
+            raise HTTPException(status_code=400, detail="Refined version needs Claude or OpenAI.")
+        key = (api_key or "").strip()
+        if not key and not _byok_only():
+            key = settings.get_key(engine) or ""
+        if not key:
+            label = "Claude" if engine == "claude" else "OpenAI"
+            raise HTTPException(status_code=400, detail=f"Add your {label} API key first.")
+        try:
+            provider = providers.build_provider(engine, api_key=key)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        if job.refined_status == "running":
+            return {"ok": True}  # already in progress
+        app.state.store.start_refine(job, provider, engine)
+        return {"ok": True}
 
     @app.get("/api/jobs/{job_id}/original")
     def job_original(job_id: str):
@@ -161,16 +186,16 @@ def create_app(store: JobStore | None = None) -> FastAPI:
         )
 
     @app.get("/api/jobs/{job_id}/result")
-    def job_result(job_id: str, download: bool = False):
+    def job_result(job_id: str, download: bool = False, which: str = "result"):
         job = _get_job(job_id)
-        if job.status != "done":
-            raise HTTPException(status_code=404, detail="result not ready")
+        path = _pdf_path(job, "refined" if which == "refined" else "result")
         # download=1 → save dialog; otherwise inline for the preview pane.
         from pathlib import PurePath
         stem = PurePath(job.filename).stem or "document"
+        suffix = "refined" if which == "refined" else "translated"
         return FileResponse(
-            job.output_path, media_type="application/pdf",
-            filename=f"{stem}_translated.pdf",
+            path, media_type="application/pdf",
+            filename=f"{stem}_{suffix}.pdf",
             content_disposition_type="attachment" if download else "inline",
         )
 
@@ -183,6 +208,10 @@ def create_app(store: JobStore | None = None) -> FastAPI:
             if job.status != "done":
                 raise HTTPException(status_code=404, detail="result not ready")
             return job.output_path
+        if which == "refined":
+            if job.refined_status != "done" or not job.refined_path:
+                raise HTTPException(status_code=404, detail="refined result not ready")
+            return job.refined_path
         raise HTTPException(status_code=400, detail="invalid document")
 
     @app.get("/api/jobs/{job_id}/pages")

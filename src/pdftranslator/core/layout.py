@@ -156,15 +156,20 @@ def redact_blocks(page) -> None:
     _redact_rects(page, rects)
 
 
-def _fit_textbox(width: float, height: float, text: str, fontname: str, max_size: float,
-                 fontfile: str | None = None) -> float:
-    """Largest size <= max_size (floor 4.0) at which `text` fits a width x height box.
+# Absolute floor used only to AVOID TRUNCATION: if a translation can't fit a box
+# even at _MIN_SIZE, shrink further (down to this) so text is never cut off.
+_TRUNC_FLOOR = 2.5
+
+
+def _largest_fit(width: float, height: float, text: str, fontname: str, max_size: float,
+                 fontfile: str | None = None, min_size: float = _MIN_SIZE) -> tuple[float, bool]:
+    """Return (size, fitted): the largest size in [min_size, max_size] at which
+    `text` fits a width x height box, and whether it actually fit at that size.
 
     Measured with the real renderer (insert_textbox on a scratch page), which
-    handles wrapping and mixed CJK/Latin widths correctly. One size for the whole
-    block keeps the font consistent within a paragraph. The font is registered
+    handles wrapping and mixed CJK/Latin widths correctly. The font is registered
     once on a single reused scratch page (the per-size leftover value is
-    independent of prior drawing), so the bundled font is parsed only once here.
+    independent of prior drawing), so the bundled font is parsed only once.
     """
     box_w = max(width, 1.0)
     box_h = max(height, 1.0) + 2.0
@@ -175,14 +180,20 @@ def _fit_textbox(width: float, height: float, text: str, fontname: str, max_size
         if fontfile:
             sp.insert_font(fontname=fontname, fontfile=fontfile)
         size = max_size
-        while size >= _MIN_SIZE:
+        while size >= min_size:
             leftover = sp.insert_textbox(rect, text, fontsize=size, fontname=fontname)
             if leftover >= 0:  # whole text fit at this size
-                return size
+                return size, True
             size -= 0.5
-        return _MIN_SIZE
+        return min_size, False
     finally:
         scratch.close()
+
+
+def _fit_textbox(width: float, height: float, text: str, fontname: str, max_size: float,
+                 fontfile: str | None = None) -> float:
+    """Largest size <= max_size (floor 4.0) at which `text` fits a width x height box."""
+    return _largest_fit(width, height, text, fontname, max_size, fontfile)[0]
 
 
 # Below this the text is too small to read; if a block fits only this small we
@@ -234,15 +245,20 @@ def insert_translations(page, units: list[TextUnit], translations: list[str], ta
         fontname, fontfile = fonts.font_variant(target, u.bold, u.italic)
         _register(fontname, fontfile)
         x0, y0, x1, y1 = u.bbox
-        size = _fit_textbox(x1 - x0, y1 - y0, text, fontname, u.size, fontfile)
+        size, fitted = _largest_fit(x1 - x0, y1 - y0, text, fontname, u.size, fontfile)
         # If the translation only fits at an unreadably small size (it's wider
-        # than the source, e.g. a short label that grew when translated), recover
-        # by reflowing into adjacent whitespace instead of shrinking to nothing.
-        if size < min(u.size, _READABLE):
+        # than the source, e.g. a short label that grew when translated) — or
+        # doesn't fit at all — recover by reflowing into adjacent whitespace.
+        if size < min(u.size, _READABLE) or not fitted:
             gx0, gy0, gx1, gy1 = _grow_bounds(u, units, page_rect)
-            grown = _fit_textbox(gx1 - gx0, gy1 - gy0, text, fontname, u.size, fontfile)
-            if grown > size:
-                x0, y0, x1, y1, size = gx0, gy0, gx1, gy1, grown
+            grown, gfit = _largest_fit(gx1 - gx0, gy1 - gy0, text, fontname, u.size, fontfile)
+            if grown > size or (gfit and not fitted):
+                x0, y0, x1, y1, size, fitted = gx0, gy0, gx1, gy1, grown, gfit
+        # Anti-truncation: if it STILL doesn't fit, drop below the readable floor
+        # so the text is never silently cut off (better tiny than missing).
+        if not fitted:
+            size = _largest_fit(x1 - x0, y1 - y0, text, fontname, u.size, fontfile,
+                                min_size=_TRUNC_FLOOR)[0]
         color = fitz.sRGB_to_pdf(u.color)
         # Reflow the whole paragraph into its block at one size — consistent
         # sizing, confined to the (possibly grown) block so it never overflows.
@@ -250,3 +266,31 @@ def insert_translations(page, units: list[TextUnit], translations: list[str], ta
             fitz.Rect(x0, y0, x1, y1 + 2), text,
             fontsize=size, fontname=fontname, color=color, align=0,
         )
+
+
+def find_layout_issues(page, expected_texts: list[str]) -> list[str]:
+    """Render-time layout check: report text that spilled past the page edge, or
+    expected translations that are missing/truncated from the output.
+
+    Used as a self-verification gate after translating a page (the inline auto-fit
+    in insert_translations should keep this empty; anything it reports is a real
+    inconsistency worth fixing/flagging).
+    """
+    issues: list[str] = []
+    rect = page.rect
+    data = page.get_text("dict")
+    norm_rendered = "".join(page.get_text("text").split())
+    for b in data.get("blocks", []):
+        if b.get("type") != 0:
+            continue
+        for line in b["lines"]:
+            for s in line["spans"]:
+                x0, y0, x1, y1 = s["bbox"]
+                if x1 > rect.x1 + 1 or y1 > rect.y1 + 1 or x0 < -1 or y0 < -1:
+                    issues.append(f"text past page edge: {s['text'][:20]!r}")
+    for t in expected_texts:
+        key = "".join(t.split())
+        sample = key[: min(len(key), 12)]
+        if sample and sample not in norm_rendered:
+            issues.append(f"missing/truncated: {t[:25]!r}")
+    return issues

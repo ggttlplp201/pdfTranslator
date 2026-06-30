@@ -3,10 +3,18 @@ import fitz
 from . import lang, layout, ocr, terminology
 
 
-def translate_pdf(input_path, output_path, source, target, provider, progress=None) -> None:
+def translate_pdf(input_path, output_path, source, target, provider, progress=None,
+                  force_ocr: bool = False) -> list[str]:
+    """Translate a PDF in place to output_path.
+
+    force_ocr=True (the "refined" tier) re-reads every page via OCR for maximum
+    placement fidelity, not just broken pages. Returns a list of any layout
+    issues the self-verification gate found after auto-fitting (empty == clean).
+    """
     lang.validate_source(source)
     lang.validate_target(target)
     use_ocr = ocr.enabled()
+    issues: list[str] = []
 
     doc = fitz.open(input_path)
     try:
@@ -14,8 +22,9 @@ def translate_pdf(input_path, output_path, source, target, provider, progress=No
         for index, page in enumerate(doc):
             units = layout.extract_units(page)
             # Fallback: if the text layer is broken/missing, recover text via OCR.
+            # The refined tier (force_ocr) OCRs every page for placement fidelity.
             ocr_page = False
-            if use_ocr and ocr.page_is_garbled(page):
+            if use_ocr and (force_ocr or ocr.page_is_garbled(page)):
                 ocr_units = ocr.extract_units(page)
                 # If the page has a (broken) text layer, only translate OCR boxes
                 # that sit over real text — leave graphics/logos (e.g. a title
@@ -57,6 +66,11 @@ def translate_pdf(input_path, output_path, source, target, provider, progress=No
                     if not ocr_page:
                         layout.redact_units(page, sel_units)
                     layout.insert_translations(page, sel_units, [t for _, t in kept], target)
+                    # Self-verification: confirm the rendered page is consistent
+                    # (no text past the edge, nothing truncated). The inline
+                    # auto-fit should keep this empty.
+                    page_issues = layout.find_layout_issues(page, [t for _, t in kept])
+                    issues.extend(f"page {index + 1}: {m}" for m in page_issues)
             if progress is not None:
                 progress(index, count)
         # Subset embedded fonts so a 10MB CJK font shrinks to the few KB actually
@@ -68,3 +82,4 @@ def translate_pdf(input_path, output_path, source, target, provider, progress=No
         doc.save(output_path, garbage=4, deflate=True)
     finally:
         doc.close()
+    return issues

@@ -188,16 +188,27 @@
               </svg>
             </span>
             <span class="status-done-label" data-i18n="complete">Translation complete</span>
+            <span id="refineStatus" class="refine-status hidden"></span>
           </div>
-          <button id="downloadBtn" class="btn-download">
-            <!-- download icon -->
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <path d="M7 10l5 5 5-5"/>
-              <path d="M12 15V3"/>
-            </svg>
-            <span data-i18n="download">Download translated PDF</span>
-          </button>
+          <div class="status-done-actions">
+            <button id="refineBtn" class="btn-refine">
+              <!-- sparkles icon -->
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3v4M12 17v4M3 12h4M17 12h4"/>
+                <path d="M6.3 6.3l2.4 2.4M15.3 15.3l2.4 2.4M17.7 6.3l-2.4 2.4M8.7 15.3l-2.4 2.4"/>
+              </svg>
+              <span data-i18n="refine">Get refined version</span>
+            </button>
+            <button id="downloadBtn" class="btn-download">
+              <!-- download icon -->
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <path d="M7 10l5 5 5-5"/>
+                <path d="M12 15V3"/>
+              </svg>
+              <span data-i18n="download">Download translated PDF</span>
+            </button>
+          </div>
         </div>
 
         <!-- Error state -->

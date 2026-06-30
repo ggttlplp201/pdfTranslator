@@ -28,7 +28,14 @@ class Job:
     page: int = 0
     error: Optional[str] = None
     owner: str = ""  # anonymous per-browser session id; isolates one user's history
+    # Optional on-demand "refined" pass (LLM + OCR) into a second output.
+    refined_path: Optional[Path] = None
+    refined_status: str = "idle"   # idle | running | done | error
+    refined_page: int = 0
+    refined_engine: Optional[str] = None
+    refined_error: Optional[str] = None
     thread: Optional[threading.Thread] = field(default=None, repr=False, compare=False)
+    refined_thread: Optional[threading.Thread] = field(default=None, repr=False, compare=False)
 
 
 class JobStore:
@@ -109,3 +116,29 @@ class JobStore:
             source=job.source, target=job.target,
             provider=job.provider, progress=progress,
         )
+
+    def start_refine(self, job: Job, provider: object, engine_name: str) -> None:
+        """Run the on-demand refined pass (LLM + forced OCR) in the background."""
+        job.refined_status = "running"
+        job.refined_page = 0
+        job.refined_error = None
+        job.refined_engine = engine_name
+        job.refined_path = job.tmpdir / "refined.pdf"
+        thread = threading.Thread(target=self._run_refine, args=(job, provider), daemon=True)
+        job.refined_thread = thread
+        thread.start()
+
+    def _run_refine(self, job: Job, provider: object) -> None:
+        try:
+            def progress(index: int, count: int) -> None:
+                job.refined_page = index + 1
+
+            engine.translate_pdf(
+                str(job.input_path), str(job.refined_path),
+                source=job.source, target=job.target,
+                provider=provider, progress=progress, force_ocr=True,
+            )
+            job.refined_status = "done"
+        except Exception as exc:
+            job.refined_status = "error"
+            job.refined_error = f"Refine failed: {exc}"

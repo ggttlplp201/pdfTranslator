@@ -510,3 +510,65 @@ def test_session_cookie_issued():
     resp = client.get("/")
     assert resp.status_code == 200
     assert "pdftx_sid" in resp.headers.get("set-cookie", "")
+
+
+def _wait_refined(client, job_id, timeout=40):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        s = client.get(f"/api/jobs/{job_id}").json()
+        if s["refined_status"] in ("done", "error"):
+            return s
+        time.sleep(0.1)
+    raise AssertionError("refine did not finish in time")
+
+
+def test_refine_creates_refined_version(monkeypatch, tmp_path):
+    monkeypatch.setenv("PDFTRANSLATOR_CONFIG_DIR", str(tmp_path))
+
+    class Fake:
+        def translate(self, texts, source, target):
+            return [t.upper() for t in texts]
+    monkeypatch.setattr(providers, "build_provider", lambda *a, **k: Fake())
+
+    client = TestClient(create_app())
+    job_id = client.post(
+        "/api/translate",
+        files={"file": ("d.pdf", _pdf_bytes("hello"), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    _wait(client, job_id)
+
+    r = client.post(f"/api/jobs/{job_id}/refine", data={"engine": "claude", "api_key": "sk-x"})
+    assert r.status_code == 200
+    s = _wait_refined(client, job_id)
+    assert s["refined_status"] == "done", s
+    assert s["refined_engine"] == "claude"
+
+    res = client.get(f"/api/jobs/{job_id}/result?which=refined")
+    assert res.status_code == 200 and res.content[:5].startswith(b"%PDF")
+    assert "refined" in res.headers.get("content-disposition", "")
+
+
+def test_refine_requires_llm_engine(fake_google):
+    client = TestClient(create_app())
+    job_id = client.post(
+        "/api/translate",
+        files={"file": ("d.pdf", _pdf_bytes("hi"), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    _wait(client, job_id)
+    r = client.post(f"/api/jobs/{job_id}/refine", data={"engine": "google", "api_key": "x"})
+    assert r.status_code == 400
+
+
+def test_refine_requires_key(fake_google, tmp_path, monkeypatch):
+    monkeypatch.setenv("PDFTRANSLATOR_CONFIG_DIR", str(tmp_path))
+    client = TestClient(create_app())
+    job_id = client.post(
+        "/api/translate",
+        files={"file": ("d.pdf", _pdf_bytes("hi"), "application/pdf")},
+        data={"source": "auto", "target": "en"},
+    ).json()["job_id"]
+    _wait(client, job_id)
+    r = client.post(f"/api/jobs/{job_id}/refine", data={"engine": "claude"})
+    assert r.status_code == 400
